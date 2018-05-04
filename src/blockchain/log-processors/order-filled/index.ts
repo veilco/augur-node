@@ -37,13 +37,16 @@ export function processOrderFilledLog(db: Knex, augur: Augur, log: FormattedEven
       const orderId = log.orderId;
       const tickSize = numTicksToTickSize(numTicks, minPrice, maxPrice);
       db.first("orderCreator", "fullPrecisionPrice", "orderType").from("orders").where({ orderId }).asCallback((err: Error|null, ordersRow?: Partial<OrdersRow<BigNumber>>): void => {
+        console.log("LOG", JSON.stringify(log));
         if (err) return callback(err);
         if (!ordersRow) return callback(new Error("order not found"));
         const orderCreator = ordersRow.orderCreator!;
         const price = ordersRow.fullPrecisionPrice!;
         const orderType = ordersRow.orderType!;
         const numCreatorTokens = fixedPointToDecimal(new BigNumber(log.numCreatorTokens, 10), BN_WEI_PER_ETHER);
+        console.log("numCreatorTokens", numCreatorTokens);
         const numCreatorShares = augur.utils.convertOnChainAmountToDisplayAmount(new BigNumber(log.numCreatorShares, 10), tickSize);
+        console.log("numCreatorShares", numCreatorShares);
         const numFillerTokens = fixedPointToDecimal(new BigNumber(log.numFillerTokens, 10), BN_WEI_PER_ETHER);
         const numFillerShares = augur.utils.convertOnChainAmountToDisplayAmount(new BigNumber(log.numFillerShares, 10), tickSize);
         const marketCreatorFees = fixedPointToDecimal(new BigNumber(log.marketCreatorFees, 10), BN_WEI_PER_ETHER);
@@ -76,6 +79,7 @@ export function processOrderFilledLog(db: Knex, augur: Augur, log: FormattedEven
         augurEmitter.emit("OrderFilled", Object.assign({}, log, tradeData));
         db.insert(tradeData).into("trades").asCallback((err: Error|null): void => {
           if (err) return callback(err);
+          console.log("INSERTED", amount.toFixed());
           updateVolumetrics(db, augur, category, marketId, outcome, blockNumber, orderId, orderCreator, tickSize, minPrice, maxPrice, true, (err: Error|null): void => {
             if (err) return callback(err);
             updateOrdersAndPositions(db, augur, marketId, orderId, orderCreator, filler, tickSize, callback);
