@@ -20,7 +20,7 @@ exports.up = async (knex: Knex): Promise<any> => {
       table.string("reporterFees", 255);
       table.string("marketCreatorFees", 255);
       table.string("price", 255).notNullable();
-      table.string("amount", 255).notNullable();
+      table.string("amount", 255).nullable();
       table.integer("tradeGroupId");
 
       table.unique(["transactionHash", "logIndex"]);
