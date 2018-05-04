@@ -49,6 +49,7 @@ export function processOrderFilledLog(db: Knex, augur: Augur, log: FormattedEven
         const marketCreatorFees = fixedPointToDecimal(new BigNumber(log.marketCreatorFees, 10), BN_WEI_PER_ETHER);
         const reporterFees = fixedPointToDecimal(new BigNumber(log.reporterFees, 10), BN_WEI_PER_ETHER);
         const amount = calculateNumberOfSharesTraded(numCreatorShares, numCreatorTokens, calculateFillPrice(augur, price, minPrice, maxPrice, orderType));
+        console.log("AMOUNT", amount);
         const tradeData = formatBigNumberAsFixed<TradesRow<BigNumber>, TradesRow<string>>({
           marketId,
           outcome,
@@ -70,6 +71,8 @@ export function processOrderFilledLog(db: Knex, augur: Augur, log: FormattedEven
           marketCreatorFees,
           reporterFees,
         });
+        console.log("TRADE DATA", JSON.stringify(tradeData));
+        console.log("AMOUNT FIXED", amount.toFixed());
         augurEmitter.emit("OrderFilled", Object.assign({}, log, tradeData));
         db.insert(tradeData).into("trades").asCallback((err: Error|null): void => {
           if (err) return callback(err);
