@@ -391,6 +391,7 @@ function getParticipantEthFees(db: Knex, augur: Augur, reporter: Address, univer
       const totalFeeTokensInFeeWindow = new BigNumber(ethFeeRows.feeTokenSupply).plus(new BigNumber(ethFeeRows.participationTokenSupply));
       const participantShareOfFeeWindow = totalFeeTokensInFeeWindow.isZero() ? ZERO : new BigNumber(ethFeeRows.feeTokenBalance).dividedBy(totalFeeTokensInFeeWindow);
       const cashInFeeWindow = new BigNumber(ethFeeRows.cashFeeWindow);
+      console.log("cashFeeWindow: ", cashInFeeWindow.toFixed())
       const participantEthFees = new BigNumber(ethFeeRows.cashParticipant).plus(participantShareOfFeeWindow.times(cashInFeeWindow));
       const reporterShareOfParticipant = new BigNumber(ethFeeRows.reporterBalance).dividedBy(ethFeeRows.size);
       const ethFees = reporterShareOfParticipant.times(participantEthFees);
