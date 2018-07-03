@@ -595,6 +595,10 @@ async-mkdirp@1.2.0:
   version "1.2.0"
   resolved "https://registry.yarnpkg.com/async-mkdirp/-/async-mkdirp-1.2.0.tgz#bf231d5975a748ce44134b189446d0618f970fc4"
 
+async-parallel@1.2.3:
+  version "1.2.3"
+  resolved "https://registry.yarnpkg.com/async-parallel/-/async-parallel-1.2.3.tgz#0b90550aeffb7a365d8cee881eb0618f656a3450"
+
 async@1.5.2, async@1.x, async@^1.4.0, async@^1.5.0:
   version "1.5.2"
   resolved "https://registry.yarnpkg.com/async/-/async-1.5.2.tgz#ec6a61ae56480c0c3cb241c95618e20892f9672a"
@@ -613,9 +617,9 @@ atob@^2.0.0:
   version "2.1.1"
   resolved "https://registry.yarnpkg.com/atob/-/atob-2.1.1.tgz#ae2d5a729477f289d60dd7f96a6314a22dd6c22a"
 
-augur-core@1.0.0-17:
-  version "1.0.0-17"
-  resolved "https://registry.yarnpkg.com/augur-core/-/augur-core-1.0.0-17.tgz#41794db6d5f7217c6f9edf23d6c7fd92cb085ec8"
+augur-core@1.0.0-19:
+  version "1.0.0-19"
+  resolved "https://registry.yarnpkg.com/augur-core/-/augur-core-1.0.0-19.tgz#74b95074cc324a64092a1f5853ff9d2bfa638050"
   dependencies:
     "@types/get-port" "3.2.0"
     "@types/mkdirp" "0.5.1"
@@ -623,6 +627,7 @@ augur-core@1.0.0-17:
     "@types/yargs" "11.0.0"
     async-file "2.0.2"
     async-mkdirp "1.2.0"
+    async-parallel "1.2.3"
     binascii "0.0.1"
     bn.js "4.11.8"
     copy-dir "0.3.0"
@@ -644,12 +649,12 @@ augur-core@1.0.0-17:
     solidity-coverage "0.5.4"
     yargs "11.0.0"
 
-augur.js@4.12.0-16:
-  version "4.12.0-16"
-  resolved "https://registry.yarnpkg.com/augur.js/-/augur.js-4.12.0-16.tgz#7574829577090686cce9df0b4fc5a3981ea7142d"
+augur.js@4.12.0-17:
+  version "4.12.0-17"
+  resolved "https://registry.yarnpkg.com/augur.js/-/augur.js-4.12.0-17.tgz#5fc3b467ddfe652b8884474618f5baafbaaaee1e"
   dependencies:
     async "1.5.2"
-    augur-core "1.0.0-17"
+    augur-core "1.0.0-19"
     bignumber.js "6.0.0"
     clone "2.1.1"
     columnify "1.5.4"
