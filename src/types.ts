@@ -5,6 +5,7 @@ import * as Knex from "knex";
 import * as WebSocket from "ws";
 import * as https from "https";
 import * as http from "http";
+import * as grpc from "grpc";
 
 export { BlockDetail, FormattedEventLog } from "augur.js";
 
@@ -599,6 +600,7 @@ export interface UIUniverseInfoRow<BigNumberType> extends NormalizedPayout<strin
 export interface ServersData {
   servers: Array<WebSocket.Server>;
   httpServers: Array<http.Server | https.Server>;
+  grpcServers: Array<grpc.Server>;
   controlEmitter: EventEmitter;
 }
 

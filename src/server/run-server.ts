@@ -6,6 +6,7 @@ import { runWebsocketServer } from "./run-websocket-server";
 import { getMarkets } from "./getters/get-markets";
 import { isSyncFinished } from "../blockchain/bulk-sync-augur-node-with-blockchain";
 import { EventEmitter } from "events";
+import { StartGRPCServer, GetDefaultGRPCServerConfig } from "./grpc/grpc-server";
 
 // tslint:disable-next-line:no-var-requires
 const { websocketConfigs } = require("../../config");
@@ -20,6 +21,8 @@ export function runServer(db: Knex, augur: Augur, controlEmitter: EventEmitter =
 
   const servers: ServersData = runWebsocketServer(db, app, augur, websocketConfigs, controlEmitter);
 
+  servers.grpcServers = [StartGRPCServer(GetDefaultGRPCServerConfig(), db, augur)];
+
   app.get("/", (req, res) => {
     res.send("Hello World");
   });
@@ -29,7 +32,7 @@ export function runServer(db: Knex, augur: Augur, controlEmitter: EventEmitter =
       const networkId: string = augur.rpc.getNetworkID();
       const universe: Address = augur.contracts.addresses[networkId].Universe;
 
-      getMarkets(db, universe, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, (err: Error|null, result?: any): void => {
+      getMarkets(db, universe, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, (err: Error | null, result?: any): void => {
         if (err || result.length === 0) {
           res.send({ status: "down", reason: err || "No markets found", universe });
         } else {
@@ -75,7 +78,10 @@ export function runServer(db: Knex, augur: Augur, controlEmitter: EventEmitter =
 }
 
 export function shutdownServers(servers: ServersData) {
-  servers.httpServers.forEach((server, index) => {
-    server.close(() => servers.servers[index].close());
-  });
+  servers.grpcServers.forEach((server) => server.tryShutdown(() => {
+    // shutdown httpServers after grpc server is gracefully shutdown
+    servers.httpServers.forEach((server, index) => {
+      server.close(() => servers.servers[index].close());
+    });
+  }));
 }

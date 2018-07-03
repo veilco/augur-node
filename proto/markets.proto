@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package proto;
+
+// Note that Google doesn't support generation of JavaScript fromObject() functions
+// https://github.com/google/protobuf/blob/579f81e1c66d64395031a1bbcb54ba7a44dade55/js/message.js#L178
+// https://github.com/google/protobuf/issues/1591
+
+service MarketsApi {
+	rpc GetMarkets(GetMarketsRequest) returns (GetMarketsResponse) {}
+	rpc GetMarketsInfo(GetMarketsInfoRequest) returns (GetMarketsInfoResponse) {}
+	rpc GetMarketsInCategory(GetMarketsInCategoryRequest) returns (GetMarketsInCategoryResponse) {}
+};
+
+message GetMarketsRequest {
+	string universe = 1;
+	string creator = 2;
+	string category = 3;
+	string reporting_state = 4;
+	string fee_window = 5;
+	string designated_reporter = 6;
+	string sort_by = 7;
+	bool is_sort_descending = 8;
+	uint32 limit = 9;
+	uint32 offset = 10;
+};
+
+message GetMarketsResponse {
+	repeated string market_addresses = 1;
+};
+
+message GetMarketsInfoRequest {
+	repeated string market_addresses = 2;
+};
+
+message GetMarketsInfoResponse {
+	repeated MarketInfo market_info = 1;
+};
+
+message MarketInfo {
+	string id = 1;
+	string universe = 2;
+	string market_type = 3;
+	uint32 num_outcomes = 4;
+	string min_price = 5;
+	string max_price = 6;
+	string cumulative_scale = 7;
+	string author = 8;
+	uint64 creation_time = 9;
+	uint64 creation_block = 10;
+	string creation_fee = 11;
+	string settlement_fee = 12;
+	string reporting_fee_rate = 13;
+	string market_creator_fee_rate = 14;
+	string market_creator_fees_balance = 15;
+	string market_creator_mailbox = 16;
+	string market_creator_mailbox_owner = 17;
+	string initial_report_size = 18;
+	string category = 19;
+	repeated string tags = 20;
+	string volume = 21;
+	string outstanding_shares = 22;
+	string fee_window = 23;
+	uint64 end_time = 24;
+	uint64 finalization_block_number = 25;
+	uint64 finalization_time = 26;
+	ReportingState reporting_state = 27;
+	bool forking = 28;
+	bool needs_migration = 29;
+	string description = 30;
+	string details = 31;
+	string scalar_denomination = 32;
+	string designated_reporter = 33;
+	string designated_report_stake = 34;
+	string resolution_source = 35;
+	string num_ticks = 36;
+	string tick_size = 37;
+	NormalizedPayout consensus = 38;
+	repeated OutcomeInfo outcomes = 39;
+};
+
+message NormalizedPayout {
+	bool is_invalid = 1;
+	repeated string payout = 2;
+};
+
+message OutcomeInfo {
+	uint64 id = 1;
+	string volume = 2;
+	string price = 3;
+	string description = 4;
+};
+
+enum ReportingState {
+	PRE_REPORTING = 0;
+	DESIGNATED_REPORTING = 1;
+	OPEN_REPORTING = 2;
+	CROWDSOURCING_DISPUTE = 3;
+	AWAITING_NEXT_WINDOW = 4;
+	AWAITING_FINALIZATION = 5;
+	FINALIZED = 6;
+	FORKING = 7;
+	AWAITING_NO_REPORT_MIGRATION = 8;
+	AWAITING_FORK_MIGRATION = 9;
+};
+
+message GetMarketsInCategoryRequest {
+	string universe = 1;
+	string category = 2;
+	string sort_by = 3;
+	string is_sort_descending = 4;
+	string limit = 5;
+	string offset = 6;
+};
+
+message GetMarketsInCategoryResponse {
+	repeated string market_addresses = 1;
+};

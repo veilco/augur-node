@@ -116,5 +116,5 @@ export function runWebsocketServer(db: Knex, app: express.Application, augur: Au
     });
   });
 
-  return { servers, httpServers, controlEmitter };
+  return { servers, httpServers, controlEmitter, grpcServers: [] };
 }
