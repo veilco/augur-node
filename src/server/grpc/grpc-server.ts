@@ -93,7 +93,6 @@ function makeMarketService(db: Knex, augur: Augur): object {
 
 export interface GRPCServerConfig {
   bindAddress: string; // address to which server will bind, "ip:port"
-  // TODO env GRPC_DEBUG
 }
 
 export function GetDefaultGRPCServerConfig(): GRPCServerConfig {
