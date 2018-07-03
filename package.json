@@ -1,6 +1,6 @@
 {
   "name": "augur-node",
-  "version": "0.2.14",
+  "version": "0.2.16",
   "description": "Augur Node",
   "author": "The Augur Developers <team@augur.net>",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "start": "node ./build/runServer",
     "debug": "node --inspect-brk ./build/runServer",
     "test": "mocha test/unit",
-    "test:integration": "mocha -r ts-node/register 'test/integration/**/*.ts'",
+    "test:integration": "mocha 'test/integration/**/*.ts'",
     "test:integration:docker": "docker-compose up --force-recreate --abort-on-container-exit",
     "lint": "tslint -c tslint.json -p . ./src/*.ts ./src/**/*.ts ./src/**/**/*.ts ./src/**/**/**/*.ts && eslint test/unit",
     "build-protobuf": "mkdir -p build-proto && npx protoc-gen-grpc-ts --ts_out=service=true:build-proto --proto_path=proto proto/*.proto && npx protoc-gen-grpc --js_out=import_style=commonjs,binary:build-proto --grpc_out=build-proto --proto_path=proto proto/*.proto",
@@ -82,6 +82,7 @@
     "@types/knex": "0.14.8",
     "@types/mocha": "^5.2.2",
     "@types/protobufjs": "^6.0.0",
+    "@types/sinon": "^5.0.1",
     "chai": "3.5.0",
     "coveralls": "3.0.1",
     "eslint": "3.17.1",
@@ -95,6 +96,7 @@
     "proxyquire": "1.7.11",
     "replace-in-file": "3.0.0",
     "shared-git-hooks": "1.2.1",
+    "sinon": "^6.0.1",
     "tslint": "5.7.0",
     "tslint-eslint-rules": "4.1.1",
     "typescript": "2.9.2"

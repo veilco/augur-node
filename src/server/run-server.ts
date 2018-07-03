@@ -50,7 +50,11 @@ export function runServer(db: Knex, augur: Augur, controlEmitter: EventEmitter =
       res.status(422).send({ error: "Bad value for max_pending_transactions, must be an integer in base 10" });
     } else {
       const waitingClientsCount = db.client.pool.pendingAcquires.length;
-      res.send({ status: (maxPendingTransactions > waitingClientsCount) ? "up" : "down", maxPendingTransactions, pendingTransactions: waitingClientsCount });
+      res.send({
+        status: (maxPendingTransactions > waitingClientsCount) ? "up" : "down",
+        maxPendingTransactions,
+        pendingTransactions: waitingClientsCount,
+      });
     }
   });
 
