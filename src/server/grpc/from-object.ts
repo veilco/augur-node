@@ -1,5 +1,5 @@
-import { MarketInfo, NormalizedPayout as NormalizedPayoutProto, OutcomeInfo, ReportingState as ReportingStateProto } from '../../../build-proto/markets_pb';
-import { NormalizedPayout, ReportingState, UIMarketInfo, UIOutcomeInfo } from '../../types';
+import { MarketInfo, NormalizedPayout as NormalizedPayoutProto, OutcomeInfo, ReportingState as ReportingStateProto } from "../../../build-proto/markets_pb";
+import { NormalizedPayout, ReportingState, UIMarketInfo, UIOutcomeInfo } from "../../types";
 
 export function marketInfoToProto(x: UIMarketInfo<string>): MarketInfo {
   const mi = new MarketInfo();
@@ -26,11 +26,11 @@ export function marketInfoToProto(x: UIMarketInfo<string>): MarketInfo {
     mi.setInitialReportSize(x.initialReportSize);
   }
   mi.setCategory(x.category);
-  x.tags.forEach(tag => {
+  x.tags.forEach((tag) => {
     if (tag !== null) {
       mi.addTags(tag);
     }
-  })
+  });
   mi.setVolume(x.volume);
   mi.setOutstandingShares(x.outstandingShares);
   mi.setFeeWindow(x.feeWindow);
@@ -84,7 +84,7 @@ export function normalizedPayoutToProto(x: NormalizedPayout<string>): Normalized
   // design terms) it's just a bool, never a number: isInvalid is stored in
   // DB as a boolean, but sqlite uses 0 and 1 as boolean, and end result is
   // isInvalid might be a number; but we model isInvalid as a bool in protobuf.
-  if (typeof x.isInvalid === 'number') {
+  if (typeof x.isInvalid === "number") {
     n.setIsInvalid(x.isInvalid !== 0);
   } else {
     n.setIsInvalid(x.isInvalid);
