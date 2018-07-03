@@ -6,7 +6,7 @@ import { runWebsocketServer } from "./run-websocket-server";
 import { getMarkets } from "./getters/get-markets";
 import { isSyncFinished } from "../blockchain/bulk-sync-augur-node-with-blockchain";
 import { EventEmitter } from "events";
-import { StartGRPCServer, GetDefaultGRPCServerConfig } from "./grpc/grpc-server";
+import { StartGRPCServer, GRPCServerConfig, GetDefaultGRPCServerConfig } from "./grpc/grpc-server";
 
 // tslint:disable-next-line:no-var-requires
 const { websocketConfigs } = require("../../config");
@@ -16,12 +16,20 @@ export interface RunServerResult {
   servers: ServersData;
 }
 
+function getGRPCServerConfig(): GRPCServerConfig {
+  const c = GetDefaultGRPCServerConfig();
+  if (process.env.GRPC_SERVER_BIND_ADDRESS) {
+    c.bindAddress = process.env.GRPC_SERVER_BIND_ADDRESS;
+  }
+  return c;
+}
+
 export function runServer(db: Knex, augur: Augur, controlEmitter: EventEmitter = new EventEmitter()): RunServerResult {
   const app: express.Application = express();
 
   const servers: ServersData = runWebsocketServer(db, app, augur, websocketConfigs, controlEmitter);
 
-  servers.grpcServers = [StartGRPCServer(GetDefaultGRPCServerConfig(), db, augur)];
+  servers.grpcServers = [StartGRPCServer(getGRPCServerConfig(), db, augur)];
 
   app.get("/", (req, res) => {
     res.send("Hello World");
