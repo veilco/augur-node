@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package proto;
+package augur;
 
 // Note that Google doesn't support generation of JavaScript fromObject() functions
 // https://github.com/google/protobuf/blob/579f81e1c66d64395031a1bbcb54ba7a44dade55/js/message.js#L178
