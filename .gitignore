@@ -4,5 +4,6 @@ coverage/
 build/
 definitions/
 augur*.db
+upload-block*
 tags
 build-proto/
