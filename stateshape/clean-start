@@ -1,0 +1,5 @@
+#!/bin/bash
+
+set +x;
+
+RPC_SERVER_BIND_ADDRESS="0.0.0.0:15392" AUGUR_NODE_WS="ws://localhost:15332" ETHEREUM_HTTP=https://mainnet.infura.io/metamask yarn clean-start
