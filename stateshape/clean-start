@@ -7,4 +7,4 @@ if [[ -z "$ETHEREUM_HTTP" ]]; then
     exit 1;
 fi
 
-git pull origin master && yarn && yarn build && RPC_SERVER_BIND_ADDRESS="0.0.0.0:15392" AUGUR_NODE_WS="ws://localhost:15332" yarn clean-start
+git pull origin master && yarn && yarn build && RPC_SERVER_BIND_ADDRESS="0.0.0.0:15392" AUGUR_NODE_WS="ws://localhost:15332" yarn unsafe-clean-start
