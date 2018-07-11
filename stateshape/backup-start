@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set +x;
+
+if [[ -z "$ETHEREUM_HTTP" ]]; then
+    echo "You must set ETHEREUM_HTTP";
+    exit 1;
+fi
+
+RPC_SERVER_BIND_ADDRESS="0.0.0.0:15392" AUGUR_NODE_WS="ws://localhost:15332" yarn start
