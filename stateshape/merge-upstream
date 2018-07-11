@@ -2,4 +2,4 @@
 
 set +x;
 
-git fetch upstream && git merge `git ls-remote --tags upstream | cut -f 2 | tail -1`
+git fetch upstream && git merge `git ls-remote --tags upstream | cut -f 2 | tail -1` && git push
