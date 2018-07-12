@@ -29,8 +29,6 @@
     "test:database:seed": "node ./node_modules/knex/bin/cli.js seed:run --env test_file",
     "migrate:make": "node ./node_modules/knex/bin/cli.js migrate:make -x ts $1",
     "coverage": "istanbul cover --include-all-sources --root ./build ./node_modules/mocha/bin/_mocha test/unit",
-    "postinstall": "postinstall-build build",
-    "postdeploy": "npm run migrate_pg",
     "link": "npm link augur.js speedomatic",
     "clean": "rm -rf augur*.db build definitions",
     "rebuild": "npm run clean && npm run build",

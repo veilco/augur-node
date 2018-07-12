@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# if this fails you may need to run `gcloud auth configure-docker`
+
+set +x;
+
+# we'll tag off AUGUR_JS_VESRION because that's what upstream does
+AUGUR_JS_VESRION="$(npm explore augur.js -- npm run --silent core:version)"
+
+IMAGE_NAME="stateshape/augur-node" # prefix with stateshape to make clear it's our fork
+IMAGE_TAG="$AUGUR_JS_VESRION"
+
+IMAGE_EXPECTED_TO_EXIST="$IMAGE_NAME:$IMAGE_TAG"
+
+IMAGE_REGISTRY="gcr.io"
+GCP_PROJECT_STAGING="predictions-global-staging"
+GCP_PROJECT_PROD="predictions-global-prod"
+
+if [[ -z "$PROD" ]]; then
+  echo "note: set PROD to push to prod gcr"
+  REMOTE_IMAGE_NAME_AND_TAG="$IMAGE_REGISTRY/$GCP_PROJECT_STAGING/$IMAGE_NAME:$IMAGE_TAG"
+else
+  REMOTE_IMAGE_NAME_AND_TAG="$IMAGE_REGISTRY/$GCP_PROJECT_PROD/$IMAGE_NAME:$IMAGE_TAG"
+fi
+
+docker tag $IMAGE_EXPECTED_TO_EXIST $REMOTE_IMAGE_NAME_AND_TAG
+docker push $REMOTE_IMAGE_NAME_AND_TAG

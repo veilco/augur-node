@@ -1,0 +1,15 @@
+#!/bin/bash
+
+echo "WARNING: must be run from augur-node root directory"
+
+set +x;
+
+# we'll tag off AUGUR_JS_VESRION because that's what upstream does
+AUGUR_JS_VESRION="$(npm explore augur.js -- npm run --silent core:version)"
+
+docker pull node:8 # ensure latest node image; note this version must correspond to that used in Dockerfile
+
+IMAGE_NAME="stateshape/augur-node" # prefix with stateshape to make clear it's our fork
+IMAGE_TAG="$AUGUR_JS_VESRION"
+
+docker build . -t $IMAGE_NAME:$IMAGE_TAG

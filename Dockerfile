@@ -8,20 +8,24 @@ COPY tsconfig.json tsconfig.json
 COPY certs certs
 
 COPY package.json package.json
-RUN git init && npm install && rm -rf .git
+COPY yarn.lock yarn.lock
+RUN git init && yarn --pure-lockfile && rm -rf .git
 
-COPY src src
 COPY test test
-RUN npm run build
-RUN npm pack
+COPY proto proto
+COPY src src
+
+RUN yarn build
+RUN yarn pack
 
 COPY knexfile.js knexfile.js
 
 FROM node:8
 EXPOSE 9001
 WORKDIR /app/
-COPY --from=builder /app/node_modules node_modules
 
+# ie. the "yarn pack" seems to exclude node_modules, which is why it's copied separately
+COPY --from=builder /app/node_modules node_modules
 COPY --from=builder /app/augur-node*.tgz /app
 RUN tar xzf augur-node*.tgz && mv package/* . && rm -rf package
 
