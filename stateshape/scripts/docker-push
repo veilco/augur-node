@@ -4,11 +4,16 @@
 
 set +x;
 
-# we'll tag off AUGUR_JS_VESRION because that's what upstream does
-AUGUR_JS_VESRION="$(npm explore augur.js -- npm run --silent core:version)"
+if [[ -z "$CUSTOM_IMAGE_TAG" ]]; then
+  # we'll tag off AUGUR_JS_VESRION because that's what upstream does
+  AUGUR_JS_VESRION="$(npm explore augur.js -- npm run --silent core:version)"
+  IMAGE_TAG="$AUGUR_JS_VESRION"
+else
+  echo "note: set CUSTOM_IMAGE_TAG"
+  IMAGE_TAG="$CUSTOM_IMAGE_TAG"
+fi
 
 IMAGE_NAME="stateshape/augur-node" # prefix with stateshape to make clear it's our fork
-IMAGE_TAG="$AUGUR_JS_VESRION"
 
 IMAGE_EXPECTED_TO_EXIST="$IMAGE_NAME:$IMAGE_TAG"
 

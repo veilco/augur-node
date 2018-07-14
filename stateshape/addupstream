@@ -1,0 +1,2 @@
+git remote add upstream https://github.com/AugurProject/augur-node.git
+git remote set-url --push upstream DISABLE
