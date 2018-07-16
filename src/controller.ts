@@ -4,10 +4,10 @@ import { NetworkConfiguration } from "augur-core";
 import { runServer, RunServerResult, shutdownServers } from "./server/run-server";
 import { bulkSyncAugurNodeWithBlockchain } from "./blockchain/bulk-sync-augur-node-with-blockchain";
 import { startAugurListeners } from "./blockchain/start-augur-listeners";
-import { createDbAndConnect, renameDatabaseFile } from "./setup/check-and-initialize-augur-db";
+import { createDbAndConnect, renameDatabaseFile, saveBulkSyncDatabase } from "./setup/check-and-initialize-augur-db";
 import { clearOverrideTimestamp } from "./blockchain/process-block";
 import { processQueue } from "./blockchain/process-queue";
-import { ErrorCallback } from "./types";
+import { ConnectOptions, ErrorCallback } from "./types";
 import { EventEmitter } from "events";
 import { ControlMessageType } from "./constants";
 import { logger } from "./utils/logger";
@@ -30,7 +30,7 @@ export class AugurNodeController {
   private errorCallback: ErrorCallback | undefined;
   private logger = logger;
 
-  constructor(augur: Augur, networkConfig: NetworkConfiguration, databaseDir?: string) {
+  constructor(augur: Augur, networkConfig: ConnectOptions, databaseDir?: string) {
     this.augur = augur;
     this.networkConfig = networkConfig;
     this.databaseDir = databaseDir;
@@ -45,35 +45,24 @@ export class AugurNodeController {
       this.db = await createDbAndConnect(errorCallback, this.augur, this.networkConfig, this.databaseDir);
       this.controlEmitter.emit(ControlMessageType.BulkSyncStarted);
       const handoffBlockNumber = await bulkSyncAugurNodeWithBlockchain(this.db, this.augur);
+      await saveBulkSyncDatabase(this.augur.rpc.getNetworkID(), this.databaseDir);
       this.controlEmitter.emit(ControlMessageType.BulkSyncFinished);
       this.logger.info("Bulk sync with blockchain complete.");
       processQueue.kill();
       this.serverResult = runServer(this.db, this.augur, this.controlEmitter);
-      startAugurListeners(this.db, this.augur, handoffBlockNumber + 1, this.shutdownCallback.bind(this));
+      startAugurListeners(this.db, this.augur, handoffBlockNumber + 1, this._shutdownCallback.bind(this));
       processQueue.resume();
     } catch (err) {
       if (this.errorCallback) this.errorCallback(err);
     }
   }
 
-  public shutdown() {
-    if (!this.running) return;
-    this.running = false;
-    this.logger.info("Stopping Augur Node Server");
-    processQueue.pause();
-    if (this.serverResult !== undefined) {
-      const servers = this.serverResult.servers;
-      shutdownServers(servers);
-      this.serverResult = undefined;
+  public async shutdown() {
+    try {
+      await this._shutdown();
+    } catch (err) {
+      if (this.errorCallback) this.errorCallback(err);
     }
-    if (this.db !== undefined) {
-      this.db.destroy();
-      this.db = undefined;
-    }
-    clearOverrideTimestamp();
-    // When we have real shutdown feature in augur.js and ethrpc, implement here.
-    this.augur = new Augur();
-    this.logger.clear();
   }
 
   public isRunning() {
@@ -93,29 +82,53 @@ export class AugurNodeController {
     return ({ lastSyncBlockNumber, uploadBlockNumber, highestBlockNumber });
   }
 
-  public async resetDatabase() {
-    let networkId = "1";
-    if (this.augur != null) {
-      const fetchedNetworkId = this.augur.rpc.getNetworkID();
-      if (fetchedNetworkId) {
-        networkId = fetchedNetworkId;
+  public async resetDatabase(id: string, errorCallback: ErrorCallback | undefined) {
+    let networkId = id || "1";
+    try {
+      if (this.augur != null && this.augur.rpc.getNetworkID()) {
+        networkId = this.augur.rpc.getNetworkID();
       }
+      if (this.isRunning()) await this._shutdown();
+      await renameDatabaseFile(networkId, this.databaseDir);
+    } catch (err) {
+      if (errorCallback) errorCallback(err);
     }
-    if (this.isRunning()) {
-      this.shutdown();
-    }
-    await renameDatabaseFile(networkId, this.databaseDir);
   }
 
   public addLogger(logger: LoggerInterface) {
     this.logger.addLogger(logger);
   }
 
-  private shutdownCallback(err: Error|null) {
+  public clearLoggers() {
+    this.logger.clear();
+  }
+
+  private _shutdownCallback(err: Error|null) {
     if (err == null) return;
     this.logger.error("Fatal Error, shutting down servers", err);
     if (this.errorCallback) this.errorCallback(err);
     if (this.serverResult !== undefined) shutdownServers(this.serverResult.servers);
     process.exit(1);
   }
+
+  private async _shutdown() {
+    if (!this.running) return;
+    this.running = false;
+    this.logger.info("Stopping Augur Node Server");
+    processQueue.pause();
+    if (this.serverResult !== undefined) {
+      const servers = this.serverResult.servers;
+      shutdownServers(servers);
+      this.serverResult = undefined;
+    }
+    if (this.db !== undefined) {
+      await this.db.destroy();
+      this.db = undefined;
+    }
+    clearOverrideTimestamp();
+    // When we have real shutdown feature in augur.js and ethrpc, implement here.
+    this.augur = new Augur();
+    this.logger.clear();
+  }
+
 }

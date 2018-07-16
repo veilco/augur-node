@@ -21,8 +21,9 @@ import { getMarketsClosingInDateRange } from "./getters/get-markets-closing-in-d
 import { getMarketsInfo } from "./getters/get-markets-info";
 import { getOrders } from "./getters/get-orders";
 import { getAllOrders } from "./getters/get-all-orders";
+import { getCompleteSets } from "./getters/get-complete-sets";
 import { getBetterWorseOrders } from "./getters/get-better-worse-orders";
-import { getContractAddresses } from "./getters/get-contract-addresses";
+import { getSyncData } from "./getters/get-sync-data";
 import { getDisputeInfo } from "./getters/get-dispute-info";
 import { getInitialReporters } from "./getters/get-initial-reporters";
 import { getForkMigrationTotals } from "./getters/get-fork-migration-totals";
@@ -85,8 +86,12 @@ export function dispatchJsonRpcRequest(db: Knex, request: JsonRpcRequest, augur:
       return getAllOrders(db, request.params.account, callback);
     case "getBetterWorseOrders":
       return getBetterWorseOrders(db, request.params.marketId, request.params.outcome, request.params.orderType, request.params.price, callback);
+    case "getCompleteSets":
+      return getCompleteSets(db, request.params.universe, request.params.account, callback);
     case "getContractAddresses":
-      return getContractAddresses(augur, callback);
+      return getSyncData(db, augur, callback);
+    case "getSyncData":
+      return getSyncData(db, augur, callback);
     case "getUniversesInfo":
       return getUniversesInfo(db, augur, request.params.universe, request.params.account, callback);
     case "getProfitLoss":
