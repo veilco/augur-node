@@ -1,4 +1,4 @@
-import { MarketInfo, NormalizedPayout as NormalizedPayoutProto, OutcomeInfo, ReportingState as ReportingStateProto } from "../../../build-proto/markets_pb";
+import { MarketInfo, NormalizedPayout as NormalizedPayoutProto, OutcomeInfo, ReportingState as ReportingStateProto } from "../../../build-proto/augurMarkets_pb";
 import { NormalizedPayout, ReportingState, UIMarketInfo, UIOutcomeInfo } from "../../types";
 
 export function marketInfoToProto(x: UIMarketInfo<string>): MarketInfo {

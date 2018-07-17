@@ -22,7 +22,7 @@
     "test:integration": "mocha 'test/integration/**/*.ts'",
     "test:integration:docker": "docker-compose up --force-recreate --abort-on-container-exit",
     "lint": "tslint -c tslint.json -p . ./src/*.ts ./src/**/*.ts ./src/**/**/*.ts ./src/**/**/**/*.ts && eslint test/unit",
-    "build-protobuf": "mkdir -p build-proto && npx protoc-gen-grpc-ts --ts_out=service=true:build-proto --proto_path=proto proto/*.proto && npx protoc-gen-grpc --js_out=import_style=commonjs,binary:build-proto --grpc_out=build-proto --proto_path=proto proto/*.proto",
+    "build-protobuf": "rm -rf build-proto && mkdir -p build-proto && npx protoc-gen-grpc-ts --ts_out=service=true:build-proto --proto_path=proto proto/*.proto && npx protoc-gen-grpc --js_out=import_style=commonjs,binary:build-proto --grpc_out=build-proto --proto_path=proto proto/*.proto",
     "build-typescript": "tsc",
     "build": "npm-run-all build-protobuf build-typescript",
     "nuke": "rm -f package-lock.json; rm -f yarn.lock; rm -rf node_modules; rm -rf build && npm run clean",

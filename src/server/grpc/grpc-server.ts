@@ -1,8 +1,8 @@
 import Augur from "augur.js";
 import { handleCall, handleUnaryCall, sendUnaryData, Server, ServerCredentials, ServerUnaryCall, ServiceError, status } from "grpc";
 import * as Knex from "knex";
-import { MarketsApiService } from "../../../build-proto/markets_grpc_pb";
-import { GetMarketsInfoRequest, GetMarketsInfoResponse, GetMarketsRequest, GetMarketsResponse } from "../../../build-proto/markets_pb";
+import { MarketsApiService } from "../../../build-proto/augurMarkets_grpc_pb";
+import { GetMarketsInfoRequest, GetMarketsInfoResponse, GetMarketsRequest, GetMarketsResponse } from "../../../build-proto/augurMarkets_pb";
 import { Address, UIMarketsInfo } from "../../types";
 import { getMarkets } from "../getters/get-markets";
 import { getMarketsInfo } from "../getters/get-markets-info";
