@@ -10,6 +10,7 @@ service MarketsApi {
 	rpc GetMarkets(GetMarketsRequest) returns (GetMarketsResponse) {}
 	rpc GetMarketsInfo(GetMarketsInfoRequest) returns (GetMarketsInfoResponse) {}
 	rpc GetMarketsInCategory(GetMarketsInCategoryRequest) returns (GetMarketsInCategoryResponse) {}
+	rpc GetOrders(GetOrdersRequest) return (GetOrderResponse) {}
 };
 
 message GetMarketsRequest {
@@ -115,6 +116,24 @@ message GetMarketsInCategoryRequest {
 
 message GetMarketsInCategoryResponse {
 	repeated string market_addresses = 1;
+};
+
+message GetOrdersRequest {
+	string universe = 1;
+	string market_id = 2;
+	uint64 outcome = 3;
+	string creator = 4;
+	OrderState order_state = 5;
+	uint64 earliest_creation_time  = 7;
+	uint64 latest_creation_time = 8;
+	string sort_by = 9;
+	bool is_sort_descending = 10;
+	string limit = 11;
+	string offset = 12;
+};
+
+message GetOrdersResponse {
+	
 };
 
 message Order {
