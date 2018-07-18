@@ -11,7 +11,7 @@ service MarketsApi {
 	rpc GetMarketsInfo(GetMarketsInfoRequest) returns (GetMarketsInfoResponse) {}
 	rpc GetMarketsInCategory(GetMarketsInCategoryRequest) returns (GetMarketsInCategoryResponse) {}
 	rpc GetOrders(GetOrdersRequest) returns (GetOrderResponse) {}
-	rpc BulkGetOrder(BulkGetOrdersRequest) returns (BulkGetOrdersResponse) {}
+	rpc BulkGetOrders(BulkGetOrdersRequest) returns (BulkGetOrdersResponse) {}
 	rpc GetMarketPriceHistory(GetMarketPriceHistoryRequest) returns (GetMarketPriceHistoryResponse) {}
 	rpc BulkGetMarketPriceHistory(BulkGetMarketPriceHistoryRequest) returns	(BulkGetMarketPriceHistoryResponse) {}
 };
