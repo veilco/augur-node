@@ -10,7 +10,7 @@ service MarketsApi {
 	rpc GetMarkets(GetMarketsRequest) returns (GetMarketsResponse) {}
 	rpc GetMarketsInfo(GetMarketsInfoRequest) returns (GetMarketsInfoResponse) {}
 	rpc GetMarketsInCategory(GetMarketsInCategoryRequest) returns (GetMarketsInCategoryResponse) {}
-	rpc GetOrders(GetOrdersRequest) returns (GetOrderResponse) {}
+	rpc GetOrders(GetOrdersRequest) returns (GetOrdersResponse) {}
 	rpc BulkGetOrders(BulkGetOrdersRequest) returns (BulkGetOrdersResponse) {}
 	rpc GetMarketPriceHistory(GetMarketPriceHistoryRequest) returns (GetMarketPriceHistoryResponse) {}
 	rpc BulkGetMarketPriceHistory(BulkGetMarketPriceHistoryRequest) returns	(BulkGetMarketPriceHistoryResponse) {}
@@ -121,12 +121,22 @@ message GetMarketsInCategoryResponse {
 	repeated string market_addresses = 1;
 };
 
+// BulkGetOrdersRequest provides a way to execute O(N) GetOrdersRequest in a single round trip. However, you may not need it since GetOrdersRequest returns orders for all markets if the GetOrdersRequest.market_id filter is empty.
+message BulkGetOrdersRequest {
+	repeated GetOrdersRequest requests = 1;
+};
+
+message BulkGetOrdersResponse {
+	repeated GetOrdersResponse responses = 1; // GetOrdersResponse has its own indexing, so this bulk response doesn't need its own indexing for the client to be able to interpret the response.
+};
+
 message GetOrdersRequest {
 	string universe = 1;
 	string market_id = 2;
 	uint64 outcome = 3;
-	string creator = 4;
-	OrderState order_state = 5;
+	OrderType order_type = 4;
+	string creator = 5;
+	OrderState order_state = 6;
 	uint64 earliest_creation_time  = 7;
 	uint64 latest_creation_time = 8;
 	string sort_by = 9;
@@ -136,33 +146,63 @@ message GetOrdersRequest {
 };
 
 message GetOrdersResponse {
-	
+	// These nested message types model `interface UIOrders` in types.ts. It is necessary to have multiple message types because proto3 doesn't support nested maps (and this augur-node API call returns nested maps).
+	message OrdersByOrderIdByOrderTypeByOutcome {
+		map<uint64, OrdersByOrderIdByOrderType> orders_by_order_id_by_order_type_by_outcome = 1; // map key is OutcomeInfo.id; all these orders are for the same marketId
+	}
+	message OrdersByOrderIdByOrderType {
+		// enum is an invalid map key, so we'll have a list for each of these sub-maps.
+		repeated OrdersByOrderId buy_orders_by_order_id = 1;
+		repeated OrdersByOrderId sell_orders_by_order_id = 2;
+	}
+	message OrdersByOrderId {
+		map<string, Order> orders_by_order_id = 1; // ie. map key is Order.order_id
+	}
+	map<string, OrdersByOrderIdByOrderTypeByOutcome> orders_by_order_id_by_order_type_by_outcome_by_market_id = 1; // map key is MarketInfo.id. GetOrdersRequest allows zero or one market ID, and if zero then the response will include orders from multiple markets, which is why this is indexed by market id.
 };
 
 message Order {
-	string share_token = 1;
+	string order_id = 1;
 	string transaction_hash = 2;
 	uint64 log_index = 3;
-	string owner = 4;
-	uint64 creation_time = 5;
-	uint64 creation_block_time = 6;
-	OrderState order_state = 7;
-	string price = 8;
-	string amount = 9;
-	string full_precision_price = 10;
-	string full_precision_amount = 11;
-	string tokens_escrowed = 12;
-	string shares_escrowed = 13;
-	uint64 canceled_block_number = 14;
-	string canceled_transaction_hash = 15;
-	uint64 canceled_transaction_time = 16;
+	string share_token = 4;
+	string owner = 5;
+	uint64 creation_time = 6;
+	uint64 creation_block_number = 7;
+	OrderState order_state = 8;
+	string price = 9;
+	string amount = 10;
+	string original_amount = 11;
+	string full_precision_price = 12;
+	string full_precision_amount = 13;
+	string original_full_precision_amount = 14;
+	string tokens_escrowed = 15;
+	string shares_escrowed = 16;
+	// canceled_* fields are omitted if this Order isn't cancelled
+	uint64 canceled_block_number = 17; // canceled_block_number is string in types.ts, but we have chosen to model as uint64 due to expectation that it's a natural number
+	string canceled_transaction_hash = 18;
+	uint64 canceled_transaction_time = 19; // canceled_transaction_time is string in types.ts, but we have chosen to model as uint64 due to expectation that it's a timestamp (for which we have a convention of using unix seconds since epoch in this API)
+};
+
+enum OrderType {
+	BUY = 0;
+	SELL = 1;
 };
 
 enum OrderState {
-     ALL = 0;
-     OPEN = 1;
-     CLOSED = 2;
-     CANCELED = 3;
+	ALL = 0;
+	OPEN = 1;
+	CLOSED = 2;
+	CANCELED = 3; // the augur-node database requires this to be the American spelling, "CANCELED", but the augur.js documentation spells it the British way with two Ls "CANCELLED".
+};
+
+// BulkMarketPriceHistoryRequest provides a way to execute O(N) GetMarketPriceHistoryRequest in a single round trip.
+message BulkGetMarketPriceHistoryRequest {
+	repeated GetMarketPriceHistoryRequest requests = 1;
+};
+
+message BulkGetMarketPriceHistoryResponse {
+	map<string, GetMarketPriceHistoryResponse> responses_by_market_id = 1; // ie. map key is MarketInfo.id for market_id in BulkMarketPriceHistoryRequest.requests*.market_id.
 };
 
 message GetMarketPriceHistoryRequest {
@@ -170,15 +210,19 @@ message GetMarketPriceHistoryRequest {
 };
 
 message GetMarketPriceHistoryResponse {
-	MarketPriceTimeSeries market_price_time_series = 1;
+	MarketPriceHistory market_price_history = 1;
 };
 
-message MarketPriceTimeSeries {
-	repeated TimestampedPrice single_outcome_price_time_series = 1;	
+message MarketPriceHistory {
+	map<uint64, ListTimestampedPriceAmount> timestamped_price_amount_by_outcome = 1; // map key is OutcomeInfo.id for this market; ie. the list of TimestampedPriceAmount are all historical prices for that outcome
 };
 
-message TimestampedPrice {
+message ListTimestampedPriceAmount {
+	repeated TimestampedPriceAmount timestamped_prices = 1;
+};
+
+message TimestampedPriceAmount {
 	string price = 1;
 	string amount = 2;
 	uint64 timestamp = 3;
-}
+};
