@@ -2,7 +2,7 @@ import Augur from "augur.js";
 import { handleCall, handleUnaryCall, sendUnaryData, Server, ServerCredentials, ServerUnaryCall, ServiceError, status } from "grpc";
 import * as Knex from "knex";
 import { MarketsApiService, IMarketsApiServer } from "../../../build-proto/augurMarkets_grpc_pb";
-import { GetMarketsInfoRequest, GetMarketsInfoResponse, GetMarketsRequest, GetMarketsResponse, GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse, GetOrdersRequest, GetOrdersResponse } from "../../../build-proto/augurMarkets_pb";
+import { GetMarketsInfoRequest, GetMarketsInfoResponse, GetMarketsRequest, GetMarketsResponse, GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse, GetOrdersRequest, GetOrdersResponse, BulkGetMarketPriceHistoryRequest, BulkGetMarketPriceHistoryResponse } from "../../../build-proto/augurMarkets_pb";
 import { Address, UIMarketsInfo, MarketPriceHistory, UIOrders } from "../../types";
 import { getMarkets } from "../getters/get-markets";
 import { getMarketsInfo } from "../getters/get-markets-info";
@@ -10,6 +10,8 @@ import { marketInfoToProto, marketPriceHistoryToProto, uiOrdersToProto } from ".
 import { getMarketPriceHistory } from "../getters/get-market-price-history";
 import { getOrders } from "../getters/get-orders";
 import { orderStateFromProto, orderTypeFromProto } from "./from-proto";
+
+// A note on concurrency/parallelism for Bulk gRPC apis: we could use Promise-based concurrency to take advantage of concurrency / pooling in Knex, however unsure if Knex/node uses non-blocking I/O, and also sqlite3 may throw concurrent/locking exceptions, especially in journaling mode (which augur-node uses), so we'll just have the whole thing be single threaded to minimize errors for now. https://knexjs.org/#Installation-pooling  https://stackoverflow.com/questions/4060772/sqlite-concurrent-access
 
 function isNullOrUndefined(value: any): value is null | undefined {
   return value === null || value === undefined;
@@ -96,24 +98,71 @@ function makeGetMarketsInfo(db: Knex): handleCall<GetMarketsInfoRequest, GetMark
   return f;
 }
 
+function doGetMarketPriceHistory(db: Knex, req: GetMarketPriceHistoryRequest): Promise<GetMarketPriceHistoryResponse | ServiceError> {
+  return new Promise((resolve, reject) => {
+    try {
+      getMarketPriceHistory(db, req.getMarketId(), (err: Error | null, result?: MarketPriceHistory<string>) => {
+        if (err !== null) {
+          const serviceErr: ServiceError = err;
+          serviceErr.code = status.UNAVAILABLE;
+          resolve(serviceErr);
+        } else {
+          const response = new GetMarketPriceHistoryResponse();
+          if (!isNullOrUndefined(result)) {
+            response.setMarketPriceHistory(marketPriceHistoryToProto(result));
+          }
+          resolve(response);
+        }
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 function makeGetMarketPriceHistory(db: Knex): handleCall<GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse> {
   const f: handleUnaryCall<GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse> = (
     call: ServerUnaryCall<GetMarketPriceHistoryRequest>,
     callback: sendUnaryData<GetMarketPriceHistoryResponse>) => {
-    getMarketPriceHistory(db, call.request.getMarketId(), (err: Error | null, result?: MarketPriceHistory<string>) => {
-      if (err !== null) {
-        console.error("gRPC: getMarketPriceHistory error", err);
+    function onErr(err: any) {
+      console.error("gRPC: getMarketPriceHistory error", err);
+    }
+    doGetMarketPriceHistory(db, call.request).then((respOrErr) => {
+      if (respOrErr instanceof Error) {
+        onErr(respOrErr);
+        callback(respOrErr, null);
+      } else {
+        callback(null, respOrErr);
+      }
+    }).catch(onErr);
+  };
+  return f;
+}
+
+function makeBulkGetMarketPriceHistory(db: Knex): handleCall<BulkGetMarketPriceHistoryRequest, BulkGetMarketPriceHistoryResponse> {
+  const f: handleUnaryCall<BulkGetMarketPriceHistoryRequest, BulkGetMarketPriceHistoryResponse> = (
+    call: ServerUnaryCall<BulkGetMarketPriceHistoryRequest>,
+    callback: sendUnaryData<BulkGetMarketPriceHistoryResponse>) => {
+    (async () => {
+      try {
+        const resp = new BulkGetMarketPriceHistoryResponse();
+        const respMap = resp.getResponsesByMarketIdMap();
+        for (const req of call.request.getRequestsList()) {
+          const respOrErr = await doGetMarketPriceHistory(db, req);
+          if (respOrErr instanceof Error) {
+            throw respOrErr; // short-circuit after one errored sub-request
+          } else {
+            respMap.set(req.getMarketId(), respOrErr);
+          }
+        }
+        callback(null, resp);
+      } catch (err) {
+        console.error("gRPC: bulkGetMarketPriceHistory error", err);
         const sErr: ServiceError = err;
         sErr.code = status.UNAVAILABLE;
         callback(sErr, null);
-      } else {
-        const resp = new GetMarketPriceHistoryResponse();
-        if (!isNullOrUndefined(result)) {
-          resp.setMarketPriceHistory(marketPriceHistoryToProto(result));
-        }
-        callback(null, resp);
       }
-    });
+    })();
   };
   return f;
 }
@@ -160,6 +209,7 @@ function makeMarketService(db: Knex, augur: Augur): object /*  TODO IMarketsApiS
     getMarkets: makeGetMarkets(db),
     getMarketsInfo: makeGetMarketsInfo(db),
     getMarketPriceHistory: makeGetMarketPriceHistory(db),
+    bulkGetMarketPriceHistory: makeBulkGetMarketPriceHistory(db),
     getOrders: makeGetOrders(db),
   };
 }
