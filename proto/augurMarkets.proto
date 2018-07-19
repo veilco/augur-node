@@ -95,19 +95,6 @@ message OutcomeInfo {
 	string description = 4;
 };
 
-enum ReportingState {
-	PRE_REPORTING = 0;
-	DESIGNATED_REPORTING = 1;
-	OPEN_REPORTING = 2;
-	CROWDSOURCING_DISPUTE = 3;
-	AWAITING_NEXT_WINDOW = 4;
-	AWAITING_FINALIZATION = 5;
-	FINALIZED = 6;
-	FORKING = 7;
-	AWAITING_NO_REPORT_MIGRATION = 8;
-	AWAITING_FORK_MIGRATION = 9;
-};
-
 message GetMarketsInCategoryRequest {
 	string universe = 1;
 	string category = 2;
@@ -137,8 +124,8 @@ message GetOrdersRequest {
 	OrderType order_type = 4;
 	string creator = 5;
 	OrderState order_state = 6;
-	uint64 earliest_creation_time  = 7;
-	uint64 latest_creation_time = 8;
+	uint64 earliest_creation_time  = 7; // unix timestamp seconds since epoch
+	uint64 latest_creation_time = 8; // unix timestamp seconds since epoch
 	string sort_by = 9;
 	bool is_sort_descending = 10;
 	string limit = 11;
@@ -184,18 +171,6 @@ message Order {
 	uint64 canceled_transaction_time = 19; // canceled_transaction_time is string in types.ts, but we have chosen to model as uint64 due to expectation that it's a timestamp (for which we have a convention of using unix seconds since epoch in this API)
 };
 
-enum OrderType {
-	BUY = 0;
-	SELL = 1;
-};
-
-enum OrderState {
-	ALL = 0;
-	OPEN = 1;
-	CLOSED = 2;
-	CANCELED = 3; // the augur-node database requires this to be the American spelling, "CANCELED", but the augur.js documentation spells it the British way with two Ls "CANCELLED".
-};
-
 // BulkMarketPriceHistoryRequest provides a way to execute O(N) GetMarketPriceHistoryRequest in a single round trip.
 message BulkGetMarketPriceHistoryRequest {
 	repeated GetMarketPriceHistoryRequest requests = 1;
@@ -226,3 +201,41 @@ message TimestampedPriceAmount {
 	string amount = 2;
 	uint64 timestamp = 3;
 };
+
+
+//******************************************************
+// BEGIN - all enums
+// WARNING - proto3 eliminated "optional" keyword such that all simple types (including enums) are initialized to an empty/zero value for new protobuf objects. This means that enums are initialized to 0 eg. in JavaScript "new Foo()" and golang's "Foo{}". ---> our convention is that all enums must start with `MY_TYPE_UNDEFINED = 0` to allow us to check if an enum was explicitly set. For some enums this won't matter, but for others it is essential to know if an enum was set by client or not. All enums should do this for consistency. (MY_TYPE_ prefix is required because enum values must be unique within their protobuf package.)
+//******************************************************
+
+enum OrderType {
+	ORDER_TYPE_UNDEFINED = 0;
+	BUY = 1;
+	SELL = 2;
+};
+
+enum OrderState {
+	ORDER_STATE_UNDEFINED = 0;
+	ALL = 1;
+	OPEN = 2;
+	CLOSED = 3;
+	CANCELED = 4; // the augur-node database requires this to be the American spelling, "CANCELED", but the augur.js documentation spells it the British way with two Ls "CANCELLED".
+};
+
+enum ReportingState {
+	// WARNING - ReportingState doesn't start with 'UNDEFINED = 0' because we added this convention after ReportingState, and we don't want to make a backwards-incompatible field numbering change because we store serialized protobuf messages as part of our data platform.
+	PRE_REPORTING = 0;
+	DESIGNATED_REPORTING = 1;
+	OPEN_REPORTING = 2;
+	CROWDSOURCING_DISPUTE = 3;
+	AWAITING_NEXT_WINDOW = 4;
+	AWAITING_FINALIZATION = 5;
+	FINALIZED = 6;
+	FORKING = 7;
+	AWAITING_NO_REPORT_MIGRATION = 8;
+	AWAITING_FORK_MIGRATION = 9;
+};
+
+//******************************************************
+// END - all enums
+//******************************************************
