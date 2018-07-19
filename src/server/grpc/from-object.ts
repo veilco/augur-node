@@ -153,7 +153,7 @@ function arrayOfTimestampedPriceAmountProtoToProto(x: Array<TimestampedPriceAmou
   return o;
 }
 
-// TODO explain why this is a single messy function
+// uiOrdersToProto is a big messy function (instead of separating each proto mesasge into its own function, as done elsewhere in this file) because these proto messages (subtypes of GetOrdersResponse) are only needed to model the nested map structure from UIOrders<string>. So we keep it all here; it's ugly but contained.
 // TODO unit test
 export function uiOrdersToProto(x: UIOrders<string>): GetOrdersResponse.OrdersByOrderIdByOrderTypeByOutcomeByMarketId {
   const o = new GetOrdersResponse.OrdersByOrderIdByOrderTypeByOutcomeByMarketId();
@@ -165,7 +165,7 @@ export function uiOrdersToProto(x: UIOrders<string>): GetOrdersResponse.OrdersBy
     keys(x[marketId]).forEach((outcome: number) => {
       const o3 = new GetOrdersResponse.OrdersByOrderIdByOrderType();
       m2.set(outcome, o3);
-      // TODO remove this duplicate code for buy/sell by converting AugurNodeOrderTypes into enum (I think?)
+      // TODO remove this duplicate code for buy/sell
       if (x[marketId][outcome].hasOwnProperty("buy")) {
         const o4 = new GetOrdersResponse.OrdersByOrderId();
         o3.setBuyOrdersByOrderId(o4);
@@ -193,7 +193,6 @@ export function uiOrdersToProto(x: UIOrders<string>): GetOrdersResponse.OrdersBy
 
 export function orderToProto(x: UIOrder<string>): OrderProto {
   const o = new OrderProto();
-  // TODO audit these fields
   o.setOrderId(x.orderId);
   o.setTransactionHash(x.transactionHash);
   o.setLogIndex(x.logIndex);
@@ -210,14 +209,25 @@ export function orderToProto(x: UIOrder<string>): OrderProto {
   o.setOriginalFullPrecisionAmount(x.originalFullPrecisionAmount);
   o.setTokensEscrowed(x.tokensEscrowed);
   o.setSharesEscrowed(x.sharesEscrowed);
-
-  // TODO finish canceled
-  // if (x.canceledBlockNumber !== undefined) {
-  //   const canceledBlockNumberAsNumber = parseInt(x.canceledBlockNumber, 10);
-  //   o.setCanceledBlockNumber(x.canceledBlockNumber);
-  // }
-  // o.setCanceledTransactionHash(x.canceledTransactionHash);
-  // o.setCreationTime(x.canceledTime);
+  if (x.canceledBlockNumber !== undefined) {
+    const n = parseInt(x.canceledBlockNumber, 10);
+    if (isNaN(n)) {
+      console.warn(`orderToProto canceledBlockNumber was defined but not a number, orderId=${x.orderId}, canceledBlockNumber=${x.canceledBlockNumber}`);
+    } else {
+      o.setCanceledBlockNumber(n);
+    }
+  }
+  if (x.canceledTransactionHash !== undefined) {
+    o.setCanceledTransactionHash(x.canceledTransactionHash);
+  }
+  if (x.canceledTime !== undefined) {
+    const n = parseInt(x.canceledTime, 10);
+    if (isNaN(n)) {
+      console.warn(`orderToProto canceledTime was defined but not a number, orderId=${x.orderId}, canceledTime=${x.canceledTime}`);
+    } else {
+      o.setCanceledTime(n);
+    }
+  }
   return o;
 }
 
@@ -231,15 +241,5 @@ export function orderStateToProto(x: OrderState): OrderStateProto {
       return OrderStateProto.FILLED;
     case OrderState.CANCELED:
       return OrderStateProto.CANCELED;
-  }
-}
-
-// TODO this may not be needed
-export function orderTypeToProto(x: AugurNodeOrderType): OrderTypeProto {
-  switch (x) {
-    case "buy":
-      return OrderTypeProto.BUY;
-    case "sell":
-      return OrderTypeProto.SELL;
   }
 }

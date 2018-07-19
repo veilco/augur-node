@@ -171,7 +171,7 @@ message Order {
 	// canceled_* fields are omitted if this Order isn't cancelled
 	uint64 canceled_block_number = 17; // canceled_block_number is string in types.ts, but we have chosen to model as uint64 due to expectation that it's a natural number
 	string canceled_transaction_hash = 18;
-	uint64 canceled_transaction_time = 19; // canceled_transaction_time is string in types.ts, but we have chosen to model as uint64 due to expectation that it's a timestamp (for which we have a convention of using unix seconds since epoch in this API)
+	uint64 canceled_time = 19; // canceled_transaction_time is string in types.ts, but we have chosen to model as uint64 due to expectation that it's a timestamp (for which we have a convention of using unix seconds since epoch in this grpc API)
 };
 
 // BulkMarketPriceHistoryRequest provides a way to execute O(N) GetMarketPriceHistoryRequest in a single round trip.
