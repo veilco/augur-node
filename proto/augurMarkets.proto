@@ -218,7 +218,7 @@ message MarketPriceHistory {
 };
 
 message ListTimestampedPriceAmount {
-	repeated TimestampedPriceAmount timestamped_prices = 1;
+	repeated TimestampedPriceAmount timestamped_price_amounts = 1;
 };
 
 message TimestampedPriceAmount {

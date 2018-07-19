@@ -1,12 +1,13 @@
 import Augur from "augur.js";
 import { handleCall, handleUnaryCall, sendUnaryData, Server, ServerCredentials, ServerUnaryCall, ServiceError, status } from "grpc";
 import * as Knex from "knex";
-import { MarketsApiService } from "../../../build-proto/augurMarkets_grpc_pb";
-import { GetMarketsInfoRequest, GetMarketsInfoResponse, GetMarketsRequest, GetMarketsResponse } from "../../../build-proto/augurMarkets_pb";
-import { Address, UIMarketsInfo } from "../../types";
+import { MarketsApiService, IMarketsApiServer } from "../../../build-proto/augurMarkets_grpc_pb";
+import { GetMarketsInfoRequest, GetMarketsInfoResponse, GetMarketsRequest, GetMarketsResponse, GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse } from "../../../build-proto/augurMarkets_pb";
+import { Address, UIMarketsInfo, MarketPriceHistory } from "../../types";
 import { getMarkets } from "../getters/get-markets";
 import { getMarketsInfo } from "../getters/get-markets-info";
-import { marketInfoToProto } from "./from-object";
+import { marketInfoToProto, marketPriceHistoryToProto } from "./from-object";
+import { getMarketPriceHistory } from "../getters/get-market-price-history";
 
 function isNullOrUndefined(value: any): value is null | undefined {
   return value === null || value === undefined;
@@ -84,10 +85,33 @@ function makeGetMarketsInfo(db: Knex): handleCall<GetMarketsInfoRequest, GetMark
   return f;
 }
 
-function makeMarketService(db: Knex, augur: Augur): object {
+function makeGetMarketPriceHistory(db: Knex): handleCall<GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse> {
+  const f: handleUnaryCall<GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse> = (
+    call: ServerUnaryCall<GetMarketPriceHistoryRequest>,
+    callback: sendUnaryData<GetMarketPriceHistoryResponse>) => {
+    getMarketPriceHistory(db, call.request.getMarketId(), (err: Error | null, result?: MarketPriceHistory<string>) => {
+      if (err !== null) {
+        console.error("gRPC: getMarketPriceHistory error", err);
+        const sErr: ServiceError = err;
+        sErr.code = status.UNAVAILABLE;
+        callback(sErr, null);
+      } else {
+        const r = new GetMarketPriceHistoryResponse();
+        if (!isNullOrUndefined(result)) {
+          r.setMarketPriceHistory(marketPriceHistoryToProto(result));
+        }
+        callback(null, r);
+      }
+    });
+  };
+  return f;
+}
+
+function makeMarketService(db: Knex, augur: Augur): object /* TODO IMarketsApiServer */ {
   return {
     getMarkets: makeGetMarkets(db),
     getMarketsInfo: makeGetMarketsInfo(db),
+    getMarketPriceHistory: makeGetMarketPriceHistory(db),
   };
 }
 

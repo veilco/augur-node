@@ -1,5 +1,5 @@
-import { MarketInfo, NormalizedPayout as NormalizedPayoutProto, OutcomeInfo, ReportingState as ReportingStateProto } from "../../../build-proto/augurMarkets_pb";
-import { NormalizedPayout, ReportingState, UIMarketInfo, UIOutcomeInfo } from "../../types";
+import { MarketInfo, NormalizedPayout as NormalizedPayoutProto, OutcomeInfo, ReportingState as ReportingStateProto, MarketPriceHistory as MarketPriceHistoryProto, TimestampedPriceAmount as TimestampedPriceAmountProto, ListTimestampedPriceAmount } from "../../../build-proto/augurMarkets_pb";
+import { NormalizedPayout, ReportingState, UIMarketInfo, UIOutcomeInfo, MarketPriceHistory, TimestampedPriceAmount } from "../../types";
 
 export function marketInfoToProto(x: UIMarketInfo<string>): MarketInfo {
   const mi = new MarketInfo();
@@ -116,4 +116,38 @@ export function reportingStateToProto(x: ReportingState): ReportingStateProto {
     case ReportingState.AWAITING_FORK_MIGRATION:
       return ReportingStateProto.AWAITING_FORK_MIGRATION;
   }
+}
+
+// https://www.typescriptlang.org/docs/handbook/release-notes/typescript-2-1.html
+function getProperty<T, K extends keyof T>(obj: T, key: K) {
+    return obj[key];  // Inferred type is T[K]
+}
+
+// https://github.com/Microsoft/TypeScript/pull/12253#issuecomment-353494273
+export function keys<O>(o: O) {
+  return Object.keys(o) as Array<keyof O>;
+}
+
+export function marketPriceHistoryToProto(x: MarketPriceHistory<string>): MarketPriceHistoryProto {
+  const o = new MarketPriceHistoryProto();
+  // TODO can m be undefined? in the generated code getTimestampedPriceAmountByOutcomeMap takes opt_noLazyCreate, which seems to default to returning undefined if map doesn't already exist, however opt_noLazyCreate is not included in the TypeScript signature for some reason.
+  const m = o.getTimestampedPriceAmountByOutcomeMap();
+  keys(x).forEach((outcome) => {
+    m.set(outcome, arrayOfTimestampedPriceAmountProtoToProto(x[outcome].map(timestampedPriceAmountToProto)));
+  });
+  return o;
+}
+
+export function timestampedPriceAmountToProto(x: TimestampedPriceAmount<string>): TimestampedPriceAmountProto {
+  const o = new TimestampedPriceAmountProto();
+  o.setPrice(x.price);
+  o.setAmount(x.amount);
+  o.setTimestamp(x.timestamp);
+  return o;
+}
+
+function arrayOfTimestampedPriceAmountProtoToProto(x: Array<TimestampedPriceAmountProto>): ListTimestampedPriceAmount {
+  const o = new ListTimestampedPriceAmount();
+  o.setTimestampedPricesList(x);
+  return o;
 }
