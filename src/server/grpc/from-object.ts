@@ -1,5 +1,6 @@
-import { MarketInfo, NormalizedPayout as NormalizedPayoutProto, OutcomeInfo, ReportingState as ReportingStateProto, MarketPriceHistory as MarketPriceHistoryProto, TimestampedPriceAmount as TimestampedPriceAmountProto, ListTimestampedPriceAmount } from "../../../build-proto/augurMarkets_pb";
-import { NormalizedPayout, ReportingState, UIMarketInfo, UIOutcomeInfo, MarketPriceHistory, TimestampedPriceAmount } from "../../types";
+import { MarketInfo, NormalizedPayout as NormalizedPayoutProto, OutcomeInfo, ReportingState as ReportingStateProto, MarketPriceHistory as MarketPriceHistoryProto, TimestampedPriceAmount as TimestampedPriceAmountProto, ListTimestampedPriceAmount, GetOrdersResponse, Order as OrderProto, OrderState as OrderStateProto, OrderType as OrderTypeProto } from "../../../build-proto/augurMarkets_pb";
+import { NormalizedPayout, ReportingState, UIMarketInfo, UIOutcomeInfo, MarketPriceHistory, TimestampedPriceAmount, UIOrders, UIOrder, OrderState } from "../../types";
+import { AugurNodeOrderType } from "./augur-node-new-types";
 
 export function marketInfoToProto(x: UIMarketInfo<string>): MarketInfo {
   const mi = new MarketInfo();
@@ -148,6 +149,97 @@ export function timestampedPriceAmountToProto(x: TimestampedPriceAmount<string>)
 
 function arrayOfTimestampedPriceAmountProtoToProto(x: Array<TimestampedPriceAmountProto>): ListTimestampedPriceAmount {
   const o = new ListTimestampedPriceAmount();
-  o.setTimestampedPricesList(x);
+  o.setTimestampedPriceAmountsList(x);
   return o;
+}
+
+// TODO explain why this is a single messy function
+// TODO unit test
+export function uiOrdersToProto(x: UIOrders<string>): GetOrdersResponse.OrdersByOrderIdByOrderTypeByOutcomeByMarketId {
+  const o = new GetOrdersResponse.OrdersByOrderIdByOrderTypeByOutcomeByMarketId();
+  const m = o.getOrdersByOrderIdByOrderTypeByOutcomeByMarketIdMap();
+  keys(x).forEach((marketId: string) => {
+    const o2 = new GetOrdersResponse.OrdersByOrderIdByOrderTypeByOutcome();
+    m.set(marketId, o2);
+    const m2 = o2.getOrdersByOrderIdByOrderTypeByOutcomeMap();
+    keys(x[marketId]).forEach((outcome: number) => {
+      const o3 = new GetOrdersResponse.OrdersByOrderIdByOrderType();
+      m2.set(outcome, o3);
+      // TODO remove this duplicate code for buy/sell by converting AugurNodeOrderTypes into enum (I think?)
+      if (x[marketId][outcome].hasOwnProperty("buy")) {
+        const o4 = new GetOrdersResponse.OrdersByOrderId();
+        o3.setBuyOrdersByOrderId(o4);
+        const m4 = o4.getOrdersByOrderIdMap();
+        // tslint:disable-next-line
+        Object.keys(x[marketId][outcome]["buy"]).forEach((orderId) => {
+          // tslint:disable-next-line
+          m4.set(orderId, orderToProto(x[marketId][outcome]["buy"][orderId]));
+        });
+      }
+      if (x[marketId][outcome].hasOwnProperty("sell")) {
+        const o4 = new GetOrdersResponse.OrdersByOrderId();
+        o3.setSellOrdersByOrderId(o4);
+        const m4 = o4.getOrdersByOrderIdMap();
+        // tslint:disable-next-line
+        Object.keys(x[marketId][outcome]["sell"]).forEach((orderId) => {
+          // tslint:disable-next-line
+          m4.set(orderId, orderToProto(x[marketId][outcome]["sell"][orderId]));
+        });
+      }
+    });
+  });
+  return o;
+}
+
+export function orderToProto(x: UIOrder<string>): OrderProto {
+  const o = new OrderProto();
+  // TODO audit these fields
+  o.setOrderId(x.orderId);
+  o.setTransactionHash(x.transactionHash);
+  o.setLogIndex(x.logIndex);
+  o.setShareToken(x.shareToken);
+  o.setOwner(x.owner);
+  o.setCreationTime(x.creationTime);
+  o.setCreationBlockNumber(x.creationBlockNumber);
+  o.setOrderState(orderStateToProto(x.orderState));
+  o.setPrice(x.price);
+  o.setAmount(x.amount);
+  o.setOriginalAmount(x.originalAmount);
+  o.setFullPrecisionPrice(x.fullPrecisionPrice);
+  o.setFullPrecisionAmount(x.fullPrecisionAmount);
+  o.setOriginalFullPrecisionAmount(x.originalFullPrecisionAmount);
+  o.setTokensEscrowed(x.tokensEscrowed);
+  o.setSharesEscrowed(x.sharesEscrowed);
+
+  // TODO finish canceled
+  // if (x.canceledBlockNumber !== undefined) {
+  //   const canceledBlockNumberAsNumber = parseInt(x.canceledBlockNumber, 10);
+  //   o.setCanceledBlockNumber(x.canceledBlockNumber);
+  // }
+  // o.setCanceledTransactionHash(x.canceledTransactionHash);
+  // o.setCreationTime(x.canceledTime);
+  return o;
+}
+
+export function orderStateToProto(x: OrderState): OrderStateProto {
+  switch (x) {
+    case OrderState.ALL:
+      return OrderStateProto.ALL;
+    case OrderState.OPEN:
+      return OrderStateProto.OPEN;
+    case OrderState.FILLED:
+      return OrderStateProto.FILLED;
+    case OrderState.CANCELED:
+      return OrderStateProto.CANCELED;
+  }
+}
+
+// TODO this may not be needed
+export function orderTypeToProto(x: AugurNodeOrderType): OrderTypeProto {
+  switch (x) {
+    case "buy":
+      return OrderTypeProto.BUY;
+    case "sell":
+      return OrderTypeProto.SELL;
+  }
 }

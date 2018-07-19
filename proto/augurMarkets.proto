@@ -100,8 +100,8 @@ message GetMarketsInCategoryRequest {
 	string category = 2;
 	string sort_by = 3;
 	string is_sort_descending = 4;
-	string limit = 5;
-	string offset = 6;
+	uint32 limit = 5;
+	uint32 offset = 6;
 };
 
 message GetMarketsInCategoryResponse {
@@ -128,24 +128,27 @@ message GetOrdersRequest {
 	uint64 latest_creation_time = 8; // unix timestamp seconds since epoch
 	string sort_by = 9;
 	bool is_sort_descending = 10;
-	string limit = 11;
-	string offset = 12;
+	uint32 limit = 11;
+	uint32 offset = 12;
 };
 
 message GetOrdersResponse {
 	// These nested message types model `interface UIOrders` in types.ts. It is necessary to have multiple message types because proto3 doesn't support nested maps (and this augur-node API call returns nested maps).
-	message OrdersByOrderIdByOrderTypeByOutcome {
-		map<uint64, OrdersByOrderIdByOrderType> orders_by_order_id_by_order_type_by_outcome = 1; // map key is OutcomeInfo.id; all these orders are for the same marketId
-	}
-	message OrdersByOrderIdByOrderType {
-		// enum is an invalid map key, so we'll have a list for each of these sub-maps.
-		repeated OrdersByOrderId buy_orders_by_order_id = 1;
-		repeated OrdersByOrderId sell_orders_by_order_id = 2;
-	}
 	message OrdersByOrderId {
 		map<string, Order> orders_by_order_id = 1; // ie. map key is Order.order_id
 	}
-	map<string, OrdersByOrderIdByOrderTypeByOutcome> orders_by_order_id_by_order_type_by_outcome_by_market_id = 1; // map key is MarketInfo.id. GetOrdersRequest allows zero or one market ID, and if zero then the response will include orders from multiple markets, which is why this is indexed by market id.
+	message OrdersByOrderIdByOrderType {
+		// enum is an invalid map key, so we'll have a list for each of these sub-maps.
+		OrdersByOrderId buy_orders_by_order_id = 1;
+		OrdersByOrderId sell_orders_by_order_id = 2;
+	}
+	message OrdersByOrderIdByOrderTypeByOutcome {
+		map<uint64, OrdersByOrderIdByOrderType> orders_by_order_id_by_order_type_by_outcome = 1; // map key is OutcomeInfo.id; all these orders are for the same marketId
+	}
+	message OrdersByOrderIdByOrderTypeByOutcomeByMarketId {
+		map<string, OrdersByOrderIdByOrderTypeByOutcome> orders_by_order_id_by_order_type_by_outcome_by_market_id = 1; // map key is MarketInfo.id. GetOrdersRequest allows zero or one market ID, and if zero then the response will include orders from multiple markets, which is why this is indexed by market id.
+	}
+	OrdersByOrderIdByOrderTypeByOutcomeByMarketId wrapper = 1; // wrapper is useful so that augur-node's uiOrdersToProto() can construct a fully-formed result independently from the response type. This can't be done if map<k,v> is used literally here, because protobuf generated code (at least in JavaScript) doesn't allow setting a map directly, only constructing it and then setting individual keys.
 };
 
 message Order {
@@ -218,8 +221,8 @@ enum OrderState {
 	ORDER_STATE_UNDEFINED = 0;
 	ALL = 1;
 	OPEN = 2;
-	CLOSED = 3;
-	CANCELED = 4; // the augur-node database requires this to be the American spelling, "CANCELED", but the augur.js documentation spells it the British way with two Ls "CANCELLED".
+	FILLED = 3;
+	CANCELED = 4; // the enum OrderState (in TypeScript) and augur-node database constraint requires this to be the American spelling, "CANCELED", but the augur.js documentation spells it the British way with two Ls "CANCELLED".
 };
 
 enum ReportingState {
