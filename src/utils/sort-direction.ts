@@ -1,11 +1,12 @@
-export function sortDirection(isSortDescending: boolean|null|undefined, defaultSortDirection: string): string {
-  let sortDirection;
-  if (isSortDescending == null) {
-    sortDirection = defaultSortDirection;
-  } else if (isSortDescending) {
-    sortDirection = "desc";
-  } else {
-    sortDirection = "asc";
+export type SortDirection = "desc" | "asc";
+
+export function sortDirection(isSortDescending: boolean|null|undefined, defaultSortDirection: SortDirection): SortDirection {
+  if (isSortDescending !== null && isSortDescending !== undefined) {
+    if (isSortDescending) {
+      return "desc";
+    } else {
+      return "asc";
+    }
   }
-  return sortDirection;
+  return defaultSortDirection;
 }

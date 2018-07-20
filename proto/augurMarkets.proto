@@ -99,7 +99,7 @@ message GetMarketsInCategoryRequest {
 	string universe = 1;
 	string category = 2;
 	string sort_by = 3;
-	string is_sort_descending = 4;
+	bool is_sort_descending = 4;
 	uint32 limit = 5;
 	uint32 offset = 6;
 };
@@ -185,6 +185,9 @@ message BulkGetMarketPriceHistoryResponse {
 
 message GetMarketPriceHistoryRequest {
 	string market_id = 1;
+	string sort_by = 2;
+	bool is_sort_descending = 3;
+	uint32 limit = 4;
 };
 
 message GetMarketPriceHistoryResponse {

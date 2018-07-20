@@ -9,7 +9,7 @@ describe("server/getters/get-market-price-history", () => {
     it(t.description, (done) => {
       setupTestDb((err, db) => {
         assert.ifError(err);
-        getMarketPriceHistory(db, t.params.marketId, (err, marketPriceHistory) => {
+        getMarketPriceHistory(db, t.params.marketId, t.params.sortBy, t.params.isSortDescending, t.params.limit, (err, marketPriceHistory) => {
           t.assertions(err, marketPriceHistory);
           db.destroy();
           done();
@@ -21,10 +21,10 @@ describe("server/getters/get-market-price-history", () => {
     description: "market has a single price point",
     params: {
       marketId: "0x0000000000000000000000000000000000000001",
-      sortBy: null,
-      isSortDescending: null,
-      limit: null,
-      offset: null,
+      sortBy: undefined,
+      isSortDescending: undefined,
+      limit: undefined,
+      offset: undefined,
     },
     assertions: (err, marketPriceHistory) => {
       assert.ifError(err);
@@ -45,10 +45,10 @@ describe("server/getters/get-market-price-history", () => {
     description: "market has no price history",
     params: {
       marketId: "0x0000000000000000000000000000000000001111",
-      sortBy: null,
-      isSortDescending: null,
-      limit: null,
-      offset: null,
+      sortBy: undefined,
+      isSortDescending: undefined,
+      limit: undefined,
+      offset: undefined,
     },
     assertions: (err, marketPriceHistory) => {
       assert.ifError(err);

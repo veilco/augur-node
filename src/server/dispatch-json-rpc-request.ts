@@ -51,7 +51,7 @@ export function dispatchJsonRpcRequest(db: Knex, request: JsonRpcRequest, augur:
     case "getUserTradingHistory":
       return getUserTradingHistory(db, request.params.universe, request.params.account, request.params.marketId, request.params.outcome, request.params.orderType, request.params.earliestCreationTime, request.params.latestCreationTime, request.params.sortBy, request.params.isSortDescending, request.params.limit, request.params.offset, request.params.ignoreSelfTrades, callback);
     case "getMarketPriceHistory":
-      return getMarketPriceHistory(db, request.params.marketId, callback);
+      return getMarketPriceHistory(db, request.params.marketId, request.params.sortBy, request.params.isSortDescending, request.params.limit, callback);
     case "getMarketPriceCandlesticks":
       return getMarketPriceCandlesticks(db, request.params.marketId, request.params.outcome, request.params.start, request.params.end, request.params.period, callback);
     case "getUserTradingPositions":

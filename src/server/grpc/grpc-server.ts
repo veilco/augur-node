@@ -101,7 +101,12 @@ function makeGetMarketsInfo(db: Knex): handleUnaryCall<GetMarketsInfoRequest, Ge
 function doGetMarketPriceHistory(db: Knex, req: GetMarketPriceHistoryRequest): Promise<GetMarketPriceHistoryResponse | ServiceError> {
   return new Promise((resolve, reject) => {
     try {
-      getMarketPriceHistory(db, req.getMarketId(), (err: Error | null, result?: MarketPriceHistory<string>) => {
+      getMarketPriceHistory(db,
+        req.getMarketId(),
+        undefinedIfEmpty(req.getSortBy()),
+        req.getIsSortDescending(), // getMarketPriceHistory() allows for isSortDescending to be undefined, but it's never undefined in GetMarketsRequest. However, isSortDescending is ignored if sortBy is undefined.
+        undefinedIfEmpty(req.getLimit()),
+        (err: Error | null, result?: MarketPriceHistory<string>) => {
         if (err !== null) {
           const serviceErr: ServiceError = err;
           serviceErr.code = status.UNAVAILABLE;

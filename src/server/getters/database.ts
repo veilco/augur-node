@@ -1,7 +1,7 @@
 import * as Knex from "knex";
 import * as _ from "lodash";
 import BigNumber from "bignumber.js";
-import { sortDirection } from "../../utils/sort-direction";
+import { sortDirection, SortDirection } from "../../utils/sort-direction";
 import { safeBigNumberCompare } from "../../utils/safe-big-number-compare";
 import { GenericCallback } from "../../types";
 import { formatBigNumberAsFixed } from "../../utils/format-big-number-as-fixed";
@@ -31,7 +31,7 @@ export interface Dictionary {
 export function queryModifierDB(
   query: Knex.QueryBuilder,
   defaultSortBy: string,
-  defaultSortOrder: string,
+  defaultSortOrder: SortDirection,
   sortBy: string | null | undefined,
   isSortDescending: boolean | null | undefined,
   limit: number | null | undefined,
@@ -85,7 +85,7 @@ export function queryModifier<T>(
   db: Knex,
   query: Knex.QueryBuilder,
   defaultSortBy: string,
-  defaultSortOrder: string,
+  defaultSortOrder: SortDirection,
   sortBy: string | null | undefined,
   isSortDescending: boolean | null | undefined,
   limit: number | null | undefined,
