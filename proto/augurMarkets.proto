@@ -9,7 +9,7 @@ package augur;
 service MarketsApi {
 	rpc GetMarkets(GetMarketsRequest) returns (GetMarketsResponse) {}
 	rpc GetMarketsInfo(GetMarketsInfoRequest) returns (GetMarketsInfoResponse) {}
-	rpc GetMarketsInCategory(GetMarketsInCategoryRequest) returns (GetMarketsInCategoryResponse) {}
+	// rpc GetMarketsInCategory(GetMarketsInCategoryRequest) returns (GetMarketsInCategoryResponse) {}
 	rpc GetOrders(GetOrdersRequest) returns (GetOrdersResponse) {}
 	rpc BulkGetOrders(BulkGetOrdersRequest) returns (BulkGetOrdersResponse) {}
 	rpc GetMarketPriceHistory(GetMarketPriceHistoryRequest) returns (GetMarketPriceHistoryResponse) {}

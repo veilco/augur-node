@@ -1,14 +1,14 @@
 import Augur from "augur.js";
-import { handleCall, handleUnaryCall, sendUnaryData, Server, ServerCredentials, ServerUnaryCall, ServiceError, status } from "grpc";
+import { handleUnaryCall, sendUnaryData, Server, ServerCredentials, ServerUnaryCall, ServiceError, status } from "grpc";
 import * as Knex from "knex";
-import { MarketsApiService, IMarketsApiServer } from "../../../build-proto/augurMarkets_grpc_pb";
-import { GetMarketsInfoRequest, GetMarketsInfoResponse, GetMarketsRequest, GetMarketsResponse, GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse, GetOrdersRequest, GetOrdersResponse, BulkGetMarketPriceHistoryRequest, BulkGetMarketPriceHistoryResponse } from "../../../build-proto/augurMarkets_pb";
-import { Address, UIMarketsInfo, MarketPriceHistory, UIOrders } from "../../types";
+import { IMarketsApiServer, MarketsApiService } from "../../../build-proto/augurMarkets_grpc_pb";
+import { BulkGetMarketPriceHistoryRequest, BulkGetMarketPriceHistoryResponse, BulkGetOrdersRequest, BulkGetOrdersResponse, GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse, GetMarketsInfoRequest, GetMarketsInfoResponse, GetMarketsRequest, GetMarketsResponse, GetOrdersRequest, GetOrdersResponse } from "../../../build-proto/augurMarkets_pb";
+import { Address, MarketPriceHistory, UIMarketsInfo, UIOrders } from "../../types";
+import { getMarketPriceHistory } from "../getters/get-market-price-history";
 import { getMarkets } from "../getters/get-markets";
 import { getMarketsInfo } from "../getters/get-markets-info";
-import { marketInfoToProto, marketPriceHistoryToProto, uiOrdersToProto } from "./from-object";
-import { getMarketPriceHistory } from "../getters/get-market-price-history";
 import { getOrders } from "../getters/get-orders";
+import { marketInfoToProto, marketPriceHistoryToProto, uiOrdersToProto } from "./from-object";
 import { orderStateFromProto, orderTypeFromProto } from "./from-proto";
 
 // A note on concurrency/parallelism for Bulk gRPC apis: we could use Promise-based concurrency to take advantage of concurrency / pooling in Knex, however unsure if Knex/node uses non-blocking I/O, and also sqlite3 may throw concurrent/locking exceptions, especially in journaling mode (which augur-node uses), so we'll just have the whole thing be single threaded to minimize errors for now. https://knexjs.org/#Installation-pooling  https://stackoverflow.com/questions/4060772/sqlite-concurrent-access
@@ -35,7 +35,7 @@ function nullIfEmpty<T extends string | number>(v: T): T | null {
   return o;
 }
 
-function makeGetMarkets(db: Knex): handleCall<GetMarketsRequest, GetMarketsResponse> {
+function makeGetMarkets(db: Knex): handleUnaryCall<GetMarketsRequest, GetMarketsResponse> {
   const f: handleUnaryCall<GetMarketsRequest, GetMarketsResponse> = (
     call: ServerUnaryCall<GetMarketsRequest>,
     callback: sendUnaryData<GetMarketsResponse>): void => {
@@ -76,7 +76,7 @@ function makeGetMarkets(db: Knex): handleCall<GetMarketsRequest, GetMarketsRespo
   return f;
 }
 
-function makeGetMarketsInfo(db: Knex): handleCall<GetMarketsInfoRequest, GetMarketsInfoResponse> {
+function makeGetMarketsInfo(db: Knex): handleUnaryCall<GetMarketsInfoRequest, GetMarketsInfoResponse> {
   const f: handleUnaryCall<GetMarketsInfoRequest, GetMarketsInfoResponse> = (
     call: ServerUnaryCall<GetMarketsInfoRequest>,
     callback: sendUnaryData<GetMarketsInfoResponse>) => {
@@ -120,7 +120,7 @@ function doGetMarketPriceHistory(db: Knex, req: GetMarketPriceHistoryRequest): P
   });
 }
 
-function makeGetMarketPriceHistory(db: Knex): handleCall<GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse> {
+function makeGetMarketPriceHistory(db: Knex): handleUnaryCall<GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse> {
   const f: handleUnaryCall<GetMarketPriceHistoryRequest, GetMarketPriceHistoryResponse> = (
     call: ServerUnaryCall<GetMarketPriceHistoryRequest>,
     callback: sendUnaryData<GetMarketPriceHistoryResponse>) => {
@@ -139,7 +139,7 @@ function makeGetMarketPriceHistory(db: Knex): handleCall<GetMarketPriceHistoryRe
   return f;
 }
 
-function makeBulkGetMarketPriceHistory(db: Knex): handleCall<BulkGetMarketPriceHistoryRequest, BulkGetMarketPriceHistoryResponse> {
+function makeBulkGetMarketPriceHistory(db: Knex): handleUnaryCall<BulkGetMarketPriceHistoryRequest, BulkGetMarketPriceHistoryResponse> {
   const f: handleUnaryCall<BulkGetMarketPriceHistoryRequest, BulkGetMarketPriceHistoryResponse> = (
     call: ServerUnaryCall<BulkGetMarketPriceHistoryRequest>,
     callback: sendUnaryData<BulkGetMarketPriceHistoryResponse>) => {
@@ -167,50 +167,98 @@ function makeBulkGetMarketPriceHistory(db: Knex): handleCall<BulkGetMarketPriceH
   return f;
 }
 
-function makeGetOrders(db: Knex): handleCall<GetOrdersRequest, GetOrdersResponse> {
+function doGetOrders(db: Knex, req: GetOrdersRequest): Promise<GetOrdersResponse | ServiceError> {
+  return new Promise((resolve, reject) => {
+    try {
+      getOrders(
+        db,
+        nullIfEmpty(req.getUniverse()),
+        nullIfEmpty(req.getMarketId()),
+        nullIfEmpty(req.getOutcome()),
+        orderTypeFromProto(req.getOrderType()),
+        nullIfEmpty(req.getCreator()),
+        orderStateFromProto(req.getOrderState()),
+        nullIfEmpty(req.getEarliestCreationTime()),
+        nullIfEmpty(req.getLatestCreationTime()),
+        undefinedIfEmpty(req.getSortBy()),
+        req.getIsSortDescending(), // getOrders() allows for isSortDescending to be undefined, but it's never undefined in GetOrdersRequest. This causes isSortDescending to be respected even if sortBy is undefined: isSortDescending will be used to determine if the default sort order is descending. Note that augur-node code always enforces some default sort order, so the fact that this is never undefined is not a performance bug per se (at this layer).
+        undefinedIfEmpty(req.getLimit()),
+        undefinedIfEmpty(req.getOffset()),
+        (err: Error | null, result?: UIOrders<string>) => {
+          if (err !== null) {
+            const sErr: ServiceError = err;
+            sErr.code = status.UNAVAILABLE;
+            resolve(sErr);
+          } else {
+            const resp = new GetOrdersResponse();
+            if (!isNullOrUndefined(result)) {
+              resp.setWrapper(uiOrdersToProto(result));
+            }
+            resolve(resp);
+          }
+        });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function makeGetOrders(db: Knex): handleUnaryCall<GetOrdersRequest, GetOrdersResponse> {
   const f: handleUnaryCall<GetOrdersRequest, GetOrdersResponse> = (
     call: ServerUnaryCall<GetOrdersRequest>,
     callback: sendUnaryData<GetOrdersResponse>): void => {
-    const req = call.request;
-    getOrders(
-      db,
-      nullIfEmpty(req.getUniverse()),
-      nullIfEmpty(req.getMarketId()),
-      nullIfEmpty(req.getOutcome()),
-      orderTypeFromProto(req.getOrderType()),
-      nullIfEmpty(req.getCreator()),
-      orderStateFromProto(req.getOrderState()),
-      nullIfEmpty(req.getEarliestCreationTime()),
-      nullIfEmpty(req.getLatestCreationTime()),
-      undefinedIfEmpty(req.getSortBy()),
-      req.getIsSortDescending(), // getOrders() allows for isSortDescending to be undefined, but it's never undefined in GetOrdersRequest. This causes isSortDescending to be respected even if sortBy is undefined: isSortDescending will be used to determine if the default sort order is descending. Note that augur-node code always enforces some default sort order, so the fact that this is never undefined is not a performance bug per se (at this layer).
-      undefinedIfEmpty(req.getLimit()),
-      undefinedIfEmpty(req.getOffset()),
-      (err: Error | null, result?: UIOrders<string>) => {
-        if (err !== null) {
-          console.error("gRPC: getOrders error", err);
-          const sErr: ServiceError = err;
-          sErr.code = status.UNAVAILABLE;
-          callback(sErr, null);
-        } else {
-          const resp = new GetOrdersResponse();
-          if (!isNullOrUndefined(result)) {
-            resp.setWrapper(uiOrdersToProto(result));
-          }
-          callback(null, resp);
-        }
-      });
+    function onErr(err: any) {
+      console.error("gRPC: getOrders error", err);
+    }
+    doGetOrders(db, call.request).then((respOrErr) => {
+      if (respOrErr instanceof Error) {
+        onErr(respOrErr);
+        callback(respOrErr, null);
+      } else {
+        callback(null, respOrErr);
+      }
+    }).catch(onErr);
   };
   return f;
 }
 
-function makeMarketService(db: Knex, augur: Augur): object /*  TODO IMarketsApiServer */ {
+function makeBulkGetOrders(db: Knex): handleUnaryCall<BulkGetOrdersRequest, BulkGetOrdersResponse> {
+  const f: handleUnaryCall<BulkGetOrdersRequest, BulkGetOrdersResponse> = (
+    call: ServerUnaryCall<BulkGetOrdersRequest>,
+    callback: sendUnaryData<BulkGetOrdersResponse>) => {
+    (async () => {
+      try {
+        const responses: Array<GetOrdersResponse> = [];
+        for (const req of call.request.getRequestsList()) {
+          const respOrErr = await doGetOrders(db, req);
+          if (respOrErr instanceof Error) {
+            throw respOrErr; // short-circuit after one errored sub-request
+          } else {
+            responses.push(respOrErr);
+          }
+        }
+        const resp = new BulkGetOrdersResponse();
+        resp.setResponsesList(responses);
+        callback(null, resp);
+      } catch (err) {
+        console.error("gRPC: bulkGetOrders error", err);
+        const sErr: ServiceError = err;
+        sErr.code = status.UNAVAILABLE;
+        callback(sErr, null);
+      }
+    })();
+  };
+  return f;
+}
+
+function makeMarketService(db: Knex, augur: Augur): IMarketsApiServer {
   return {
     getMarkets: makeGetMarkets(db),
     getMarketsInfo: makeGetMarketsInfo(db),
     getMarketPriceHistory: makeGetMarketPriceHistory(db),
     bulkGetMarketPriceHistory: makeBulkGetMarketPriceHistory(db),
     getOrders: makeGetOrders(db),
+    bulkGetOrders: makeBulkGetOrders(db),
   };
 }
 
