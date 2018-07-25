@@ -16,4 +16,4 @@ git merge $LATEST_UPSTREAM_TAG;
 
 echo "";
 echo "!!!! done attempting to merge automatically. May have to resolve merge conflicts.";
-echo "!!!! when done merging remember to 'git push'";
+echo "!!!! next try:   yarn && yarn clean && yarn build && yarn test && git push";

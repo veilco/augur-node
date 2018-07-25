@@ -130,6 +130,7 @@ message GetOrdersRequest {
 	bool is_sort_descending = 10;
 	uint32 limit = 11;
 	uint32 offset = 12;
+	bool orphaned = 13;
 };
 
 message GetOrdersResponse {

@@ -189,6 +189,7 @@ function doGetOrders(db: Knex, req: GetOrdersRequest): Promise<GetOrdersResponse
         req.getIsSortDescending(), // getOrders() allows for isSortDescending to be undefined, but it's never undefined in GetOrdersRequest. This causes isSortDescending to be respected even if sortBy is undefined: isSortDescending will be used to determine if the default sort order is descending. Note that augur-node code always enforces some default sort order, so the fact that this is never undefined is not a performance bug per se (at this layer).
         undefinedIfEmpty(req.getLimit()),
         undefinedIfEmpty(req.getOffset()),
+        req.getOrphaned(),
         (err: Error | null, result?: UIOrders<string>) => {
           if (err !== null) {
             const sErr: ServiceError = err;
