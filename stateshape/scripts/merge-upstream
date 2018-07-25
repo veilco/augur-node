@@ -2,4 +2,18 @@
 
 set +x;
 
-git fetch upstream && git merge `git ls-remote --tags upstream | cut -f 2 | tail -1` && git push
+git fetch upstream;
+
+echo "!!!! The latest upstream tag is actually $(git log upstream/master --decorate | egrep "commit.*tag:" | head -1) ... trying to merge it automatically:"
+
+LATEST_UPSTREAM_TAG=$(git log upstream/master --decorate | egrep "commit.*tag:" | head -1 | cut -d':' -f2 | cut -d',' -f1 | cut -d')' -f1);
+
+echo "!!!! Programmatically determined latest upstream tag to be $LATEST_UPSTREAM_TAG -- if this looks weird then you may have to merge manually.";
+echo "";
+echo "";
+
+git merge $LATEST_UPSTREAM_TAG;
+
+echo "";
+echo "!!!! done attempting to merge automatically. May have to resolve merge conflicts.";
+echo "!!!! when done merging remember to 'git push'";
