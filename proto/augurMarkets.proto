@@ -82,6 +82,8 @@ message MarketInfo {
 	string tick_size = 37;
 	NormalizedPayout consensus = 38;
 	repeated OutcomeInfo outcomes = 39;
+	uint64 last_trade_block_number = 40;
+	uint64 last_trade_time = 41;
 };
 
 message NormalizedPayout {

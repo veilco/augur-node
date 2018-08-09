@@ -42,6 +42,12 @@ export function marketInfoToProto(x: UIMarketInfo<string>): MarketInfo {
   if (x.finalizationTime !== null && x.finalizationTime !== undefined) {
     mi.setFinalizationTime(x.finalizationTime);
   }
+  if (x.lastTradeBlockNumber !== null && x.lastTradeBlockNumber !== undefined) {
+    mi.setLastTradeBlockNumber(x.lastTradeBlockNumber);
+  }
+  if (x.lastTradeTime !== null && x.lastTradeTime !== undefined) {
+    mi.setLastTradeTime(x.lastTradeTime);
+  }
   if (x.reportingState !== null && x.reportingState !== undefined) {
     mi.setReportingState(reportingStateToProto(x.reportingState));
   }
