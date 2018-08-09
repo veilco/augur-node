@@ -1,7 +1,7 @@
 import { Augur } from "augur.js";
 import BigNumber from "bignumber.js";
 import * as Knex from "knex";
-import { parallel } from "async";
+import { series } from "async";
 import { Address, Bytes32, TradesRow, ErrorCallback, GenericCallback } from "../../../types";
 
 function incrementMarketVolume(db: Knex, marketId: Address, amount: BigNumber, callback: GenericCallback<BigNumber>) {
@@ -38,6 +38,10 @@ function incrementCategoryPopularity(db: Knex, category: string, amount: BigNumb
   db.raw(`UPDATE categories SET popularity = popularity + :amount WHERE category = :category`, { amount: amount.toFixed(), category }).asCallback(callback);
 }
 
+function setMarketLastTrade(db: Knex, marketId: Address, blockNumber: number, callback: ErrorCallback) {
+  db("markets").update("lastTradeBlockNumber", blockNumber).where({ marketId }).asCallback(callback);
+}
+
 export function updateVolumetrics(db: Knex, augur: Augur, category: string, marketId: Address, outcome: number, blockNumber: number, orderId: Bytes32, orderCreator: Address, tickSize: BigNumber, minPrice: BigNumber, maxPrice: BigNumber, isIncrease: boolean, callback: ErrorCallback): void {
   db.first("token_supply.supply").from("tokens").join("token_supply", "token_supply.token", "tokens.contractAddress").where({ outcome, marketId })
     .asCallback((err: Error|null, shareTokenRow?: { supply: BigNumber }): void => {
@@ -55,8 +59,9 @@ export function updateVolumetrics(db: Knex, augur: Augur, category: string, mark
             let amount = tradesRow.amount!;
             if (!isIncrease) amount = amount.negated();
 
-            parallel({
+            series({
               market: (next) => incrementMarketVolume(db, marketId, amount, next),
+              marketLastTrade: (next) => setMarketLastTrade(db, marketId, blockNumber, next),
               outcome: (next) => incrementOutcomeVolume(db, marketId, outcome, amount, next),
               category: (next) => incrementCategoryPopularity(db, category, amount, next),
             }, callback);

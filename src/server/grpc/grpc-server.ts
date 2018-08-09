@@ -51,6 +51,7 @@ function makeGetMarkets(db: Knex): handleUnaryCall<GetMarketsRequest, GetMarkets
       req.getUniverse(),
       undefinedIfEmpty(req.getCreator()),
       undefinedIfEmpty(req.getCategory()),
+      undefinedIfEmpty(req.getSearch()),
       undefinedIfEmpty(req.getReportingState()),
       undefinedIfEmpty(req.getFeeWindow()),
       undefinedIfEmpty(req.getDesignatedReporter()),

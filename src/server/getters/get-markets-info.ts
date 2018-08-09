@@ -1,4 +1,4 @@
-import { parallel } from "async";
+import { series } from "async";
 import * as Knex from "knex";
 import * as _ from "lodash";
 import { BigNumber } from "bignumber.js";
@@ -17,8 +17,9 @@ export function getMarketsInfo(db: Knex, marketIds: Array<Address>, callback: (e
   const cleanedMarketIds = _.compact(marketIds);
   marketsQuery.whereIn("markets.marketId", cleanedMarketIds);
   marketsQuery.leftJoin("blocks as finalizationBlockNumber", "finalizationBlockNumber.blockNumber", "markets.finalizationBlockNumber").select("finalizationBlockNumber.timestamp as finalizationTime");
+  marketsQuery.leftJoin("blocks as lastTradeBlock", "lastTradeBlock.blockNumber", "markets.lastTradeBlockNumber").select("lastTradeBlock.timestamp as lastTradeTime");
 
-  parallel({
+  series({
     marketsRows: (next: AsyncCallback) => marketsQuery.asCallback(next),
     outcomesRows: (next: AsyncCallback) => db("outcomes").whereIn("marketId", cleanedMarketIds).asCallback(next),
     winningPayoutRows: (next: AsyncCallback) => db("payouts").whereIn("marketId", cleanedMarketIds).where("winning", 1).asCallback(next),

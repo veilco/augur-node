@@ -27,6 +27,7 @@ message GetMarketsRequest {
 	bool is_sort_descending = 8;
 	uint32 limit = 9;
 	uint32 offset = 10;
+	string search = 11;
 };
 
 message GetMarketsResponse {

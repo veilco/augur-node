@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("chai").assert;
-const { parallel } = require("async");
+const { series } = require("async");
 const { BigNumber } = require("bignumber.js");
 const { fix } = require("speedomatic");
 const setupTestDb = require("../../../test.database");
@@ -11,12 +11,12 @@ const augur = new Augur();
 
 describe("blockchain/log-processors/order-filled", () => {
   const test = (t) => {
-    const getState = (db, params, aux, callback) => parallel({
+    const getState = (db, params, aux, callback) => series({
       orders: next => db("orders").where("orderId", params.log.orderId).asCallback(next),
       trades: next => db("trades").where("orderId", params.log.orderId).asCallback(next),
       markets: next => db.first("volume", "sharesOutstanding").from("markets").where("marketId", aux.marketId).asCallback(next),
       outcomes: next => db.select("price", "volume").from("outcomes").where({ marketId: aux.marketId }).asCallback(next),
-      categories: next => db.first("popularity").from("categories").where("category", aux.category).asCallback(next),
+      categories: next => db.first("popularity").from("categories").where("category", aux.category.toUpperCase()).asCallback(next),
     }, callback);
     it(t.description, (done) => {
       setupTestDb((err, db) => {
@@ -100,7 +100,7 @@ describe("blockchain/log-processors/order-filled", () => {
     },
     aux: {
       marketId: "0x0000000000000000000000000000000000000001",
-      category: "test category",
+      category: "TEST CATEGORY",
     },
     assertions: {
       onAdded: (err, records) => {
@@ -270,7 +270,7 @@ describe("blockchain/log-processors/order-filled", () => {
     },
     aux: {
       marketId: "0x0000000000000000000000000000000000000001",
-      category: "test category",
+      category: "TEST CATEGORY",
     },
     assertions: {
       onAdded: (err, records) => {
