@@ -5,8 +5,8 @@ const assert = require("chai").assert;
 const {series} = require("async");
 const {BigNumber} = require("bignumber.js");
 const setupTestDb = require("../../test.database");
-const {processMarketCreatedLog, processMarketCreatedLogRemoval} = require("../../../../build/blockchain/log-processors/market-created");
-const {getMarketsWithReportingState} = require("../../../../build/server/getters/database");
+const {processMarketCreatedLog, processMarketCreatedLogRemoval} = require("../../../../src/blockchain/log-processors/market-created");
+const {getMarketsWithReportingState} = require("../../../../src/server/getters/database");
 
 describe("blockchain/log-processors/market-created", () => {
   const test = (t) => {
@@ -24,13 +24,25 @@ describe("blockchain/log-processors/market-created", () => {
           processMarketCreatedLog(trx, t.params.augur, t.params.log, (err) => {
             assert.ifError(err);
             getState(trx, t.params, (err, records) => {
-              t.assertions.onAdded(err, records);
+              t.assertions.onAdded(err, records, false);
               processMarketCreatedLogRemoval(trx, t.params.augur, t.params.log, (err) => {
                 assert.ifError(err);
                 getState(trx, t.params, (err, records) => {
                   t.assertions.onRemoved(err, records);
-                  db.destroy();
-                  done();
+                  processMarketCreatedLog(trx, t.params.augur, t.params.log, (err) => {
+                    assert.ifError(err);
+                    getState(trx, t.params, (err, records) => {
+                      t.assertions.onAdded(err, records, true);
+                      processMarketCreatedLogRemoval(trx, t.params.augur, t.params.log, (err) => {
+                        assert.ifError(err);
+                        getState(trx, t.params, (err, records) => {
+                          t.assertions.onRemoved(err, records);
+                          db.destroy();
+                          done();
+                        });
+                      });
+                    });
+                  });
                 });
               });
             });
@@ -102,7 +114,7 @@ describe("blockchain/log-processors/market-created", () => {
       },
     },
     assertions: {
-      onAdded: (err, records) => {
+      onAdded: (err, records, isReAdded) => {
         assert.ifError(err);
         assert.deepEqual(records, {
           markets: [{
@@ -127,13 +139,15 @@ describe("blockchain/log-processors/market-created", () => {
             tag1: "TEST_TAG_1",
             tag2: "TEST_TAG_2",
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             sharesOutstanding: new BigNumber("0", 10),
+            openInterest: "0",
             reportingState: "PRE_REPORTING",
             feeWindow: "0x1000000000000000000000000000000000000001",
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: 18,
+            marketStateId: isReAdded ? 19 : 18,
             shortDescription: "this is a test market",
             longDescription: "this is the long description of a test market",
             scalarDenomination: null,
@@ -157,16 +171,23 @@ describe("blockchain/log-processors/market-created", () => {
             outcome: 0,
             price: new BigNumber("0.5", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: null,
           }, {
             marketId: "0x1111111111111111111111111111111111111111",
             outcome: 1,
             price: new BigNumber("0.5", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: null,
           }],
           search: [{
-            content: "0x1111111111111111111111111111111111111111 TEST_CATEGORY this is a test market TEST_TAG_1 TEST_TAG_2 https://www.trusted-third-party-co.com",
+            category: "TEST_CATEGORY",
+            longDescription: "this is the long description of a test market",
+            resolutionSource: "https://www.trusted-third-party-co.com",
+            scalarDenomination: "",
+            shortDescription: "this is a test market",
+            tags: "TEST_TAG_1 TEST_TAG_2",
             marketId: "0x1111111111111111111111111111111111111111",
           }],
           tokens: [{
@@ -261,7 +282,7 @@ describe("blockchain/log-processors/market-created", () => {
       },
     },
     assertions: {
-      onAdded: (err, records) => {
+      onAdded: (err, records, isReAdded) => {
         assert.ifError(err);
         assert.deepEqual(records, {
           markets: [{
@@ -286,13 +307,15 @@ describe("blockchain/log-processors/market-created", () => {
             tag1: "TEST_TAG_1",
             tag2: "TEST_TAG_2",
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             sharesOutstanding: new BigNumber("0", 10),
+            openInterest: "0",
             reportingState: "PRE_REPORTING",
             feeWindow: "0x1000000000000000000000000000000000000001",
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: 18,
+            marketStateId: isReAdded ? 19 : 18,
             shortDescription: "this is a test market",
             longDescription: "this is the long description of a test market",
             scalarDenomination: null,
@@ -316,28 +339,37 @@ describe("blockchain/log-processors/market-created", () => {
             outcome: 0,
             price: new BigNumber("0.25", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: "test outcome 0",
           }, {
             marketId: "0x1111111111111111111111111111111111111112",
             outcome: 1,
             price: new BigNumber("0.25", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: "test outcome 1",
           }, {
             marketId: "0x1111111111111111111111111111111111111112",
             outcome: 2,
             price: new BigNumber("0.25", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: "test outcome 2",
           }, {
             marketId: "0x1111111111111111111111111111111111111112",
             outcome: 3,
             price: new BigNumber("0.25", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: "test outcome 3",
           }],
           search: [{
-            content: "0x1111111111111111111111111111111111111112 TEST_CATEGORY this is a test market TEST_TAG_1 TEST_TAG_2 https://www.trusted-third-party-co.com",
+            category: "TEST_CATEGORY",
+            longDescription: "this is the long description of a test market",
+            resolutionSource: "https://www.trusted-third-party-co.com",
+            scalarDenomination: "",
+            shortDescription: "this is a test market",
+            tags: "TEST_TAG_1 TEST_TAG_2",
             marketId: "0x1111111111111111111111111111111111111112",
           }],
           tokens: [{
@@ -441,7 +473,7 @@ describe("blockchain/log-processors/market-created", () => {
       },
     },
     assertions: {
-      onAdded: (err, records) => {
+      onAdded: (err, records, isReAdded) => {
         assert.ifError(err);
         assert.deepEqual(records, {
           markets: [{
@@ -466,13 +498,15 @@ describe("blockchain/log-processors/market-created", () => {
             tag1: "TEST_TAG_1",
             tag2: "TEST_TAG_2",
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             sharesOutstanding: new BigNumber("0", 10),
+            openInterest: "0",
             reportingState: "PRE_REPORTING",
             feeWindow: "0x1000000000000000000000000000000000000001",
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: 18,
+            marketStateId: isReAdded ? 19 : 18,
             shortDescription: "this is a test market",
             longDescription: "this is the long description of a test market",
             scalarDenomination: null,
@@ -496,16 +530,23 @@ describe("blockchain/log-processors/market-created", () => {
             outcome: 0,
             price: new BigNumber("6.1", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: null,
           }, {
             marketId: "0x1111111111111111111111111111111111111113",
             outcome: 1,
             price: new BigNumber("6.1", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: null,
           }],
           search: [{
-            content: "0x1111111111111111111111111111111111111113 TEST_CATEGORY this is a test market TEST_TAG_1 TEST_TAG_2 https://www.trusted-third-party-co.com",
+            category: "TEST_CATEGORY",
+            longDescription: "this is the long description of a test market",
+            resolutionSource: "https://www.trusted-third-party-co.com",
+            scalarDenomination: "",
+            shortDescription: "this is a test market",
+            tags: "TEST_TAG_1 TEST_TAG_2",
             marketId: "0x1111111111111111111111111111111111111113",
           }],
           tokens: [{
@@ -595,7 +636,7 @@ describe("blockchain/log-processors/market-created", () => {
       },
     },
     assertions: {
-      onAdded: (err, records) => {
+      onAdded: (err, records, isReAdded) => {
         assert.ifError(err);
         assert.deepEqual(records, {
           markets: [{
@@ -620,13 +661,15 @@ describe("blockchain/log-processors/market-created", () => {
             tag1: null,
             tag2: null,
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             sharesOutstanding: new BigNumber("0", 10),
+            openInterest: "0",
             reportingState: "PRE_REPORTING",
             feeWindow: "0x1000000000000000000000000000000000000001",
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: 18,
+            marketStateId: isReAdded ? 19 : 18,
             shortDescription: "this is a test market",
             longDescription: null,
             scalarDenomination: null,
@@ -650,17 +693,24 @@ describe("blockchain/log-processors/market-created", () => {
             outcome: 0,
             price: new BigNumber("0.5", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: null,
           }, {
             marketId: "0x1111111111111111111111111111111111111111",
             outcome: 1,
             price: new BigNumber("0.5", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: null,
           }],
           search: [{
-            content: "0x1111111111111111111111111111111111111111 TEST_CATEGORY this is a test market",
+            category: "TEST_CATEGORY",
+            longDescription: "",
+            resolutionSource: "",
+            scalarDenomination: "",
+            shortDescription: "this is a test market",
             marketId: "0x1111111111111111111111111111111111111111",
+            tags: "",
           }],
           tokens: [{
             contractAddress: "SHARE_TOKEN_0",
@@ -757,7 +807,7 @@ describe("blockchain/log-processors/market-created", () => {
       },
     },
     assertions: {
-      onAdded: (err, records) => {
+      onAdded: (err, records, isReAdded) => {
         assert.ifError(err);
         assert.deepEqual(records, {
           markets: [{
@@ -771,6 +821,7 @@ describe("blockchain/log-processors/market-created", () => {
             creationBlockNumber: 7,
             creationFee: new BigNumber("0", 10),
             creationTime: 10000000,
+            openInterest: "0",
             reportingFeeRate: new BigNumber("0.001", 10),
             disputeRounds: null,
             marketCreatorFeeRate: new BigNumber("0.01", 10),
@@ -782,13 +833,14 @@ describe("blockchain/log-processors/market-created", () => {
             tag1: "TEST_TAG_1",
             tag2: "TEST_TAG_2",
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             sharesOutstanding: new BigNumber("0", 10),
             reportingState: "PRE_REPORTING",
             feeWindow: "0x1000000000000000000000000000000000000001",
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: 18,
+            marketStateId: isReAdded ? 19 : 18,
             shortDescription: "this is a test market",
             longDescription: "this is the long description of a test market",
             scalarDenomination: null,
@@ -812,16 +864,23 @@ describe("blockchain/log-processors/market-created", () => {
             outcome: 0,
             price: new BigNumber("0.5", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: null,
           }, {
             marketId: "0x1111111111111111111111111111111111111111",
             outcome: 1,
             price: new BigNumber("0.5", 10),
             volume: new BigNumber("0", 10),
+            shareVolume: new BigNumber("0", 10),
             description: null,
           }],
           search: [{
-            content: "0x1111111111111111111111111111111111111111 TEST_CATEGORY this is a test market TEST_TAG_1 TEST_TAG_2 https://www.trusted-third-party-co.com",
+            category: "TEST_CATEGORY",
+            longDescription: "this is the long description of a test market",
+            shortDescription: "this is a test market",
+            tags: "TEST_TAG_1 TEST_TAG_2",
+            resolutionSource: "https://www.trusted-third-party-co.com",
+            scalarDenomination: "",
             marketId: "0x1111111111111111111111111111111111111111",
           }],
           tokens: [{

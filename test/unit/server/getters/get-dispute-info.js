@@ -2,18 +2,18 @@
 
 const assert = require("chai").assert;
 const setupTestDb = require("../../test.database");
-const { getDisputeInfo } = require("../../../../build/server/getters/get-dispute-info");
-
+const { dispatchJsonRpcRequest } = require("../../../../src/server/dispatch-json-rpc-request");
 
 describe("server/getters/get-dispute-info", () => {
   const test = (t) => {
     it(t.description, (done) => {
       setupTestDb((err, db) => {
         if (err) assert.fail(err);
-        getDisputeInfo(db, t.params.marketIds, t.params.account, (err, disputeInfo) => {
+        t.method = "getDisputeInfo";
+        dispatchJsonRpcRequest(db, t, null, (err, disputeInfo) => {
           t.assertions(err, disputeInfo);
-          db.destroy();
           done();
+          db.destroy();
         });
       });
     });
@@ -79,7 +79,7 @@ describe("server/getters/get-dispute-info", () => {
               tentativeWinning: false,
             },
           ],
-          disputeRound: 0,
+          disputeRound: 1,
         },
         {
           marketId: "0x0000000000000000000000000000000000000011",
@@ -114,7 +114,7 @@ describe("server/getters/get-dispute-info", () => {
               tentativeWinning: true,
             },
           ],
-          disputeRound: 2,
+          disputeRound: 3,
         },
       ]);
     },
@@ -180,7 +180,7 @@ describe("server/getters/get-dispute-info", () => {
               tentativeWinning: false,
             },
           ],
-          disputeRound: 0,
+          disputeRound: 1,
         },
         {
           marketId: "0x0000000000000000000000000000000000000011",
@@ -215,7 +215,7 @@ describe("server/getters/get-dispute-info", () => {
               tentativeWinning: true,
             },
           ],
-          disputeRound: 2,
+          disputeRound: 3,
         },
       ]);
     },
@@ -282,7 +282,7 @@ describe("server/getters/get-dispute-info", () => {
               tentativeWinning: false,
             },
           ],
-          disputeRound: 0,
+          disputeRound: 1,
         },
         null,
       ]);
@@ -332,7 +332,7 @@ describe("server/getters/get-dispute-info", () => {
               tentativeWinning: true,
             },
           ],
-          disputeRound: 2,
+          disputeRound: 3,
         },
         {
           marketId: "0x0000000000000000000000000000000000000211",
@@ -383,7 +383,7 @@ describe("server/getters/get-dispute-info", () => {
               tentativeWinning: false,
             },
           ],
-          disputeRound: 0,
+          disputeRound: 1,
         },
       ]);
     },
@@ -396,6 +396,16 @@ describe("server/getters/get-dispute-info", () => {
     assertions: (err, disputeInfo) => {
       assert.ifError(err);
       assert.deepEqual(disputeInfo, [null]);
+    },
+  });
+  test({
+    description: "marketIds array with null, expect error",
+    params: {
+      marketIds: [undefined],
+      account: "0x0000000000000000000000000000000000000b0b",
+    },
+    assertions: (err, disputeInfo) => {
+      assert.isNotNull(err);
     },
   });
   test({

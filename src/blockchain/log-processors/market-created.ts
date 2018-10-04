@@ -4,11 +4,12 @@ import BigNumber from "bignumber.js";
 import * as Knex from "knex";
 import { Address, FormattedEventLog, MarketCreatedLogExtraInfo, MarketsRow, SearchRow, OutcomesRow, TokensRow, CategoriesRow, ErrorCallback, AsyncCallback } from "../../types";
 import { convertDivisorToRate } from "../../utils/convert-divisor-to-rate";
-import { contentSearchBuilder} from "../../utils/content-search-builder";
 import { convertFixedPointToDecimal } from "../../utils/convert-fixed-point-to-decimal";
+import { createSearchProvider } from "../../database/fts";
+import { contentSearchBuilder} from "../../utils/content-search-builder";
 import { formatBigNumberAsFixed } from "../../utils/format-big-number-as-fixed";
 import { augurEmitter } from "../../events";
-import { MarketType, WEI_PER_ETHER, ZERO } from "../../constants";
+import { MarketType, SubscriptionEventNames, WEI_PER_ETHER, ZERO } from "../../constants";
 import { getCurrentTime } from "../process-block";
 
 export function processMarketCreatedLog(db: Knex, augur: Augur, log: FormattedEventLog, callback: ErrorCallback): void {
@@ -33,7 +34,11 @@ export function processMarketCreatedLog(db: Knex, augur: Augur, log: FormattedEv
         reportingState: augur.constants.REPORTING_STATE.PRE_REPORTING,
         blockNumber: log.blockNumber,
       };
-      db.insert(marketStateDataToInsert).into("market_state").asCallback((err: Error|null, marketStateRow?: Array<number>): void => {
+      let query = db.insert(marketStateDataToInsert).into("market_state");
+      if (db.client.config.client !== "sqlite3") {
+        query = query.returning("marketStateId");
+      }
+      query.asCallback((err: Error|null, marketStateRow?: Array<number>): void => {
         if (err) return callback(err);
         if (!marketStateRow || !marketStateRow.length) return callback(new Error("No market state ID"));
         const marketStateId = marketStateRow[0];
@@ -71,6 +76,7 @@ export function processMarketCreatedLog(db: Knex, augur: Augur, log: FormattedEv
           marketCreatorFeesBalance:   "0",
           volume:                     "0",
           sharesOutstanding:          "0",
+          openInterest:               "0",
           forking:                    0,
           needsMigration:             0,
           needsDisavowal:             0,
@@ -80,11 +86,8 @@ export function processMarketCreatedLog(db: Knex, augur: Augur, log: FormattedEv
           marketId: log.market,
           price: new BigNumber(log.minPrice, 10).plus(new BigNumber(log.maxPrice, 10)).dividedBy(new BigNumber(numOutcomes, 10)),
           volume: ZERO,
+          shareVolume: ZERO,
         });
-        const fullTextStringInsert: SearchRow = {
-          marketId: marketsDataToInsert.marketId,
-          content: contentSearchBuilder(marketsDataToInsert),
-        };
         const tokensDataToInsert: Partial<TokensRow> = {
           marketId: log.market,
           symbol: "shares",
@@ -104,7 +107,12 @@ export function processMarketCreatedLog(db: Knex, augur: Augur, log: FormattedEv
               db.insert(marketsDataToInsert).into("markets").asCallback(next);
             },
             (next: AsyncCallback): void => {
-              db.raw("insert into search_en(marketId, content) values( ?, ? )", [fullTextStringInsert.marketId, fullTextStringInsert.content]).asCallback(next);
+              const searchProvider = createSearchProvider(db);
+              if (searchProvider !== null) {
+                searchProvider.addSearchData(contentSearchBuilder(marketsDataToInsert)).then(next).catch(next);
+              } else {
+                next(null);
+              }
             },
             (next: AsyncCallback): void => {
               db.batchInsert("outcomes", shareTokens.map((_: Address, outcome: number): Partial<OutcomesRow<string>> => Object.assign({ outcome, description: outcomeNames[outcome] }, outcomesDataToInsert)), numOutcomes).asCallback(next);
@@ -117,7 +125,7 @@ export function processMarketCreatedLog(db: Knex, augur: Augur, log: FormattedEv
             },
           ], (err: Error|null): void => {
             if (err) return callback(err);
-            augurEmitter.emit("MarketCreated", Object.assign(
+            augurEmitter.emit(SubscriptionEventNames.MarketCreated, Object.assign(
               { creationTime: getCurrentTime() },
               log,
               marketsDataToInsert));
@@ -133,26 +141,24 @@ export function processMarketCreatedLog(db: Knex, augur: Augur, log: FormattedEv
   });
 }
 
+async function marketCreatedLogRemoval(db: Knex, augur: Augur, log: FormattedEventLog): Promise<void> {
+  const marketId = log.market;
+  await db.from("markets").where({ marketId }).del();
+  await db.from("outcomes").where({ marketId }).del();
+  await db.from("token_supply").whereIn("token", (queryBuilder) => {
+    return queryBuilder.select("contractAddress").from("tokens").where({ marketId});
+  }).del();
+  await db.from("tokens").where({ marketId }).del();
+  await db.from("market_state").where({ marketId }).del();
+
+  const searchProvider = createSearchProvider(db);
+  if (searchProvider !== null) {
+    await searchProvider.removeSeachData(log.market);
+  }
+
+  augurEmitter.emit(SubscriptionEventNames.MarketCreated, log);
+}
+
 export function processMarketCreatedLogRemoval(db: Knex, augur: Augur, log: FormattedEventLog, callback: ErrorCallback): void {
-  series([
-    (next: AsyncCallback): void => {
-      db.from("markets").where({ marketId: log.market }).del().asCallback(next);
-    },
-    (next: AsyncCallback): void => {
-      db.from("outcomes").where({ marketId: log.market }).del().asCallback(next);
-    },
-    (next: AsyncCallback): void => {
-      db.from("tokens").where({ marketId: log.market }).del().asCallback(next);
-    },
-    (next: AsyncCallback): void => {
-      db.from("market_state").where({ marketId: log.market }).del().asCallback(next);
-    },
-    (next: AsyncCallback): void => {
-      db.from("search_en").where({ marketId: log.market }).del().asCallback(next);
-    },
-  ], (err) => {
-    if (err) callback(err);
-    augurEmitter.emit("MarketCreated", log);
-    callback(null);
-  });
+  marketCreatedLogRemoval(db, augur, log).then(() => callback(null), callback);
 }

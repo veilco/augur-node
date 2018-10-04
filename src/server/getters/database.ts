@@ -23,6 +23,7 @@ import {
   TradingHistoryRow,
 } from "../../types";
 import { numTicksToTickSize } from "../../utils/convert-fixed-point-to-decimal";
+import Augur from "augur.js";
 
 export interface Dictionary {
   [key: string]: any;
@@ -138,6 +139,7 @@ export function reshapeMarketsRowToUIMarketInfo(row: MarketsRowWithTime, outcome
       category: row.category,
       tags: [row.tag1, row.tag2],
       volume: row.volume,
+      openInterest: row.openInterest,
       outstandingShares: row.sharesOutstanding,
       feeWindow: row.feeWindow,
       endTime: row.endTime,
@@ -194,7 +196,7 @@ export function normalizePayouts(payoutRow: Payout<BigNumber>): NormalizedPayout
 
 export function normalizedPayoutsToFixed(payout: NormalizedPayout<BigNumber>): NormalizedPayout<string> {
   return {
-    isInvalid: payout.isInvalid,
+    isInvalid: Boolean(payout.isInvalid),
     payout: payout.payout.map((payout: BigNumber) => payout.toFixed()),
   };
 }
@@ -310,4 +312,21 @@ export function sumBy<T extends Dictionary, K extends keyof T>(rows: Array<T>, .
       return _.fromPairs(mapped) as Pick<T, K>;
     })
     .value()!;
+}
+
+export function getCashAddress(augur: Augur) {
+  return augur.contracts.addresses[augur.rpc.getNetworkID()].Cash;
+}
+
+// move to database utils.
+export async function batchAndCombine<T, K>(lookupIds: Array<K>, dataFetch: (chunkLookupIds: Array<K>) => Promise<Array<T>>) {
+  const chunkedIds = _.chunk(lookupIds, 2);
+  const result: Array<Array<T>> = [];
+
+  for (const chunk of chunkedIds) result.push(await dataFetch(chunk));
+
+  const fullResults = _.flatten(result);
+  // sort results
+  // limit results
+  return fullResults;
 }
