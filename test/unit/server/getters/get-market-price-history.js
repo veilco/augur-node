@@ -1,23 +1,24 @@
-"use strict";
-
-const assert = require("chai").assert;
-const setupTestDb = require("../../test.database");
-const { getMarketPriceHistory } = require("../../../../src/server/getters/get-market-price-history");
+const { setupTestDb, seedDb } = require("test.database");
+const { dispatchJsonRpcRequest } = require("src/server/dispatch-json-rpc-request");
 
 describe("server/getters/get-market-price-history", () => {
-  const test = (t) => {
-    it(t.description, (done) => {
-      setupTestDb((err, db) => {
-        assert.ifError(err);
-        getMarketPriceHistory(db, t.params.marketId, t.params.sortBy, t.params.isSortDescending, t.params.limit, (err, marketPriceHistory) => {
-          t.assertions(err, marketPriceHistory);
-          db.destroy();
-          done();
-        });
-      });
+  let db;
+  beforeEach(async () => {
+    db = await setupTestDb().then(seedDb);
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  const runTest = (t) => {
+    test(t.description, async () => {
+      t.method = "getMarketPriceHistory";
+      const marketPriceHistory = await dispatchJsonRpcRequest(db, t, null);
+      t.assertions(marketPriceHistory);
     });
   };
-  test({
+  runTest({
     description: "market has a single price point",
     params: {
       marketId: "0x0000000000000000000000000000000000000001",
@@ -26,9 +27,8 @@ describe("server/getters/get-market-price-history", () => {
       limit: undefined,
       offset: undefined,
     },
-    assertions: (err, marketPriceHistory) => {
-      assert.ifError(err);
-      assert.deepEqual(marketPriceHistory, {
+    assertions: (marketPriceHistory) => {
+      expect(marketPriceHistory).toEqual({
         0: [{
           price: "5.5",
           amount: "0.2",
@@ -41,7 +41,7 @@ describe("server/getters/get-market-price-history", () => {
       });
     },
   });
-  test({
+  runTest({
     description: "market has no price history",
     params: {
       marketId: "0x0000000000000000000000000000000000001111",
@@ -50,9 +50,8 @@ describe("server/getters/get-market-price-history", () => {
       limit: undefined,
       offset: undefined,
     },
-    assertions: (err, marketPriceHistory) => {
-      assert.ifError(err);
-      assert.deepEqual(marketPriceHistory, {});
+    assertions: (marketPriceHistory) => {
+      expect(marketPriceHistory).toEqual({});
     },
   });
 });

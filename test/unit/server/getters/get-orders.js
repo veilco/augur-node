@@ -1,23 +1,24 @@
-"use strict";
-
-const assert = require("chai").assert;
-const setupTestDb = require("../../test.database");
-const { getOrders } = require("../../../../src/server/getters/get-orders");
+const { setupTestDb, seedDb } = require("test.database");
+const { dispatchJsonRpcRequest } = require("src/server/dispatch-json-rpc-request");
 
 describe("server/getters/get-orders", () => {
-  const test = (t) => {
-    it(t.description, (done) => {
-      setupTestDb((err, db) => {
-        assert.ifError(err);
-        getOrders(db, t.params.universe, t.params.marketId, t.params.outcome, t.params.orderType, t.params.creator, t.params.orderState, t.params.earliestCreationTime, t.params.latestCreationTime, t.params.sortBy, t.params.isSortDescending, t.params.limit, t.params.offset, t.params.orphaned, (err, openOrders) => {
-          t.assertions(err, openOrders);
-          db.destroy();
-          done();
-        });
-      });
+  let db;
+  beforeEach(async () => {
+    db = await setupTestDb().then(seedDb);
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  const runTest = (t) => {
+    test(t.description, async () => {
+      t.method = "getOrders";
+      const openOrders = await dispatchJsonRpcRequest(db, t, {});
+      t.assertions(openOrders);
     });
   };
-  test({
+  runTest({
     description: "get open buy orders for market 1",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -27,9 +28,8 @@ describe("server/getters/get-orders", () => {
       creator: null,
       orderState: "OPEN",
     },
-    assertions: (err, openOrders) => {
-      assert.ifError(err);
-      assert.deepEqual(openOrders, {
+    assertions: (openOrders) => {
+      expect(openOrders).toEqual({
         "0x0000000000000000000000000000000000000001": {
           0: {
             buy: {
@@ -115,7 +115,7 @@ describe("server/getters/get-orders", () => {
       });
     },
   });
-  test({
+  runTest({
     description: "get open sell orders for market 1",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -125,9 +125,8 @@ describe("server/getters/get-orders", () => {
       creator: null,
       orderState: "OPEN",
     },
-    assertions: (err, openOrders) => {
-      assert.ifError(err);
-      assert.deepEqual(openOrders, {
+    assertions: (openOrders) => {
+      expect(openOrders).toEqual({
         "0x0000000000000000000000000000000000000001": {
           1: {
             sell: {
@@ -155,7 +154,7 @@ describe("server/getters/get-orders", () => {
       });
     },
   });
-  test({
+  runTest({
     description: "get closed sell orders for market 1",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -165,9 +164,8 @@ describe("server/getters/get-orders", () => {
       creator: null,
       orderState: "FILLED",
     },
-    assertions: (err, openOrders) => {
-      assert.ifError(err);
-      assert.deepEqual(openOrders, {
+    assertions: (openOrders) => {
+      expect(openOrders).toEqual({
         "0x0000000000000000000000000000000000000001": {
           1: {
             sell: {
@@ -195,7 +193,7 @@ describe("server/getters/get-orders", () => {
       });
     },
   });
-  test({
+  runTest({
     description: "get cancelled sell orders for market 1",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -205,9 +203,8 @@ describe("server/getters/get-orders", () => {
       creator: null,
       orderState: "CANCELED",
     },
-    assertions: (err, openOrders) => {
-      assert.ifError(err);
-      assert.deepEqual(openOrders, {
+    assertions: (openOrders) => {
+      expect(openOrders).toEqual({
         "0x0000000000000000000000000000000000000001": {
           1: {
             sell: {
@@ -238,7 +235,7 @@ describe("server/getters/get-orders", () => {
       });
     },
   });
-  test({
+  runTest({
     description: "get orders created by user b0b",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -247,9 +244,8 @@ describe("server/getters/get-orders", () => {
       orderType: null,
       creator: "0x0000000000000000000000000000000000000b0b",
     },
-    assertions: (err, openOrders) => {
-      assert.ifError(err);
-      assert.deepEqual(openOrders, {
+    assertions: (openOrders) => {
+      expect(openOrders).toEqual({
         "0x0000000000000000000000000000000000000001": {
           0: {
             buy: {
@@ -343,7 +339,7 @@ describe("server/getters/get-orders", () => {
       });
     },
   });
-  test({
+  runTest({
     description: "get orders created by user b0b filtered by date",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -354,9 +350,8 @@ describe("server/getters/get-orders", () => {
       earliestCreationTime: 1506473501,
       latestCreationTime: 1506473515,
     },
-    assertions: (err, openOrders) => {
-      assert.ifError(err);
-      assert.deepEqual(openOrders, {
+    assertions: (openOrders) => {
+      expect(openOrders).toEqual({
         "0x0000000000000000000000000000000000000011": {
           1: {
             buy: {
@@ -408,7 +403,7 @@ describe("server/getters/get-orders", () => {
       });
     },
   });
-  test({
+  runTest({
     description: "get open orders for nonexistent market",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -417,12 +412,11 @@ describe("server/getters/get-orders", () => {
       orderType: null,
       creator: null,
     },
-    assertions: (err, openOrders) => {
-      assert.ifError(err);
-      assert.deepEqual(openOrders, {});
+    assertions: (openOrders) => {
+      expect(openOrders).toEqual({});
     },
   });
-  test({
+  runTest({
     description: "get orphaned orders",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -432,9 +426,8 @@ describe("server/getters/get-orders", () => {
       creator: null,
       orphaned: true,
     },
-    assertions: (err, openOrders) => {
-      assert.ifError(err);
-      assert.deepEqual(openOrders, {
+    assertions: (openOrders) => {
+      expect(openOrders).toEqual({
         "0x0000000000000000000000000000000000000003": {
           1: {
             sell: {

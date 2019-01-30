@@ -7,6 +7,15 @@ import * as WebSocket from "ws";
 import * as https from "https";
 import * as http from "http";
 import * as grpc from "grpc";
+import * as t from "io-ts";
+
+// BigNumber Configs
+//
+BigNumber.config({
+  MODULO_MODE: BigNumber.EUCLID,
+  ROUNDING_MODE: BigNumber.ROUND_HALF_DOWN,
+  EXPONENTIAL_AT: [-1E9, 1E9],
+});
 
 export { BlockDetail, FormattedEventLog } from "augur.js";
 
@@ -29,12 +38,6 @@ export enum FeeWindowState {
   FUTURE = "FUTURE",
 }
 
-export enum DisputeTokenState {
-  ALL = "ALL",
-  UNCLAIMED = "UNCLAIMED",
-  UNFINALIZED = "UNFINALIZED",
-}
-
 export enum OrderState {
   ALL = "ALL",
   OPEN = "OPEN",
@@ -45,6 +48,7 @@ export enum OrderState {
 export interface ConnectOptions extends NetworkConfiguration {
   propagationDelayWaitMillis?: number;
   maxRetries?: number;
+  blocksPerChunk?: number;
 }
 
 export interface BaseTransactionRow {
@@ -102,7 +106,7 @@ export type GenericCallback<ResultType> = (err: Error|null, result?: ResultType)
 
 export type AsyncCallback = (err: Error|null, result?: any) => void;
 
-export type LogProcessor = (db: Knex, augur: Augur, log: FormattedEventLog, callback: ErrorCallback) => void;
+export type LogProcessor = (augur: Augur, log: FormattedEventLog) => Promise<(db: Knex) => Promise<void>>;
 
 export interface EventLogProcessor {
   add: LogProcessor;
@@ -129,6 +133,31 @@ export interface JsonRpcResponse {
   result: any;
 }
 
+export const OutcomeParam = t.keyof({
+  0: null,
+  1: null,
+  2: null,
+  3: null,
+  4: null,
+  5: null,
+  6: null,
+  7: null,
+});
+
+export const SortLimitParams = t.partial({
+  sortBy: t.union([t.string, t.null, t.undefined]),
+  isSortDescending: t.union([t.boolean, t.null, t.undefined]),
+  limit: t.union([t.number, t.null, t.undefined]),
+  offset: t.union([t.number, t.null, t.undefined]),
+});
+
+export interface SortLimit {
+  sortBy: string|null|undefined;
+  isSortDescending: boolean|null|undefined;
+  limit: number|null|undefined;
+  offset: number|null|undefined;
+}
+
 export interface GetMarketInfoRequest {
   jsonrpc: string;
   id: string|number;
@@ -152,6 +181,11 @@ export interface MarketsContractAddressRow {
   marketId: Address;
 }
 
+export interface MarketIdUniverseFeeWindow extends MarketsContractAddressRow {
+  universe: Address;
+  feeWindow: Address;
+}
+
 export interface MarketPricing<BigNumberType> {
   minPrice: BigNumberType;
   maxPrice: BigNumberType;
@@ -160,6 +194,8 @@ export interface MarketPricing<BigNumberType> {
 
 export interface MarketsRow<BigNumberType> extends MarketPricing<BigNumberType> {
   marketId: Address;
+  transactionHash: Bytes32;
+  logIndex: number;
   universe: Address;
   marketType: string;
   marketCreator: Address;
@@ -172,6 +208,7 @@ export interface MarketsRow<BigNumberType> extends MarketPricing<BigNumberType> 
   marketCreatorMailbox: Address;
   marketCreatorMailboxOwner: Address;
   initialReportSize: BigNumberType|null;
+  validityBondSize: BigNumberType;
   category: string;
   tag1: string|null;
   tag2: string|null;
@@ -233,17 +270,21 @@ export interface TokensRow {
   outcome?: number;
 }
 
-export interface CategoriesRow {
-  popularity: string|number;
-}
-
-export interface CategoryRow {
+export interface CategoriesRow<BigNumberType> {
   category: string;
+  nonFinalizedOpenInterest: BigNumberType;
+  openInterest: BigNumberType;
+  universe: Address;
 }
 
 export interface BlocksRow {
   blockNumber: number;
   timestamp: number;
+}
+
+export interface TransactionHashesRow {
+  blockNumber: number;
+  transactionHash: number;
 }
 
 export interface DisputeTokensRow<BigNumberType> extends Payout<BigNumberType> {
@@ -321,9 +362,15 @@ export interface UIFeeWindowCurrent<BigNumberType> {
   startTime: number;
   universe: Address;
   totalStake?: BigNumberType;
+  feeWindowEthFees?: BigNumberType;
+  feeWindowRepStaked?: BigNumberType;
+  feeWindowFeeTokens?: BigNumberType;
+  feeWindowParticipationTokens?: BigNumberType;
   participantContributions?: BigNumberType;
+  participantContributionsCrowdsourcer?: BigNumberType;
+  participantContributionsInitialReport?: BigNumberType;
+  participantParticipationTokens?: BigNumberType;
   participationTokens?: BigNumberType;
-
 }
 
 export interface UIMarketCreatorFee {
@@ -389,6 +436,25 @@ export interface UIMarketInfo<BigNumberType> {
 }
 
 export type UIMarketsInfo<BigNumberType> = Array<UIMarketInfo<BigNumberType>|null>;
+
+// OpenInterestAggregation is an aggregation of various types of open interest
+// for markets within some particular context. Eg. all markets within a category.
+export interface OpenInterestAggregation<BigNumberType> {
+  nonFinalizedOpenInterest: BigNumberType; // sum of open interest for non-finalized markets in this aggregation (ie. markets with ReportingState != FINALIZED)
+  openInterest: BigNumberType; // sum of open interest for all markets in this aggregation
+}
+
+// TagAggregation is an aggregation of tag statistics/data for a set of
+// markets within some particular context, eg. all markets in a category.
+export interface TagAggregation<BigNumberType> extends OpenInterestAggregation<BigNumberType> {
+  tagName: string;
+  numberOfMarketsWithThisTag: number;
+}
+
+export interface UICategory<BigNumberType> extends OpenInterestAggregation<BigNumberType> {
+  categoryName: string;
+  tags: Array<TagAggregation<BigNumberType>>;
+}
 
 // Does not extend BaseTransaction since UI is expecting "creationBlockNumber"
 export interface UIOrder<BigNumberType> {
@@ -647,4 +713,10 @@ export interface AllOrdersRow<BigNumberType> {
   tokensEscrowed: BigNumberType;
   sharesEscrowed: BigNumberType;
   marketId: Address;
+}
+
+export interface PendingOrphanedOrderData {
+  marketId: Address;
+  outcome: number;
+  orderType: string;
 }

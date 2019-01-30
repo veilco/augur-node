@@ -1,25 +1,104 @@
+import * as t from "io-ts";
 import * as Knex from "knex";
-import { Address } from "../../types";
-import { groupByAndSum, queryModifier } from "./database";
+import * as _ from "lodash";
+import Augur from "augur.js";
+import BigNumber from "bignumber.js";
+import { CategoriesRow, UICategory, TagAggregation, ReportingState } from "../../types";
 
-export interface CategoriesRow {
+export const CategoriesParams = t.type({
+  universe: t.string,
+});
+
+interface MarketsTagRow {
   category: string;
-  popularity: number|string;
+  openInterest: BigNumber;
+  reportingState: ReportingState;
+  tag1: string;
+  tag2: string;
 }
 
-export function getCategories(db: Knex, universe: Address, sortBy: string|null|undefined, isSortDescending: boolean|null|undefined, limit: number|null|undefined, offset: number|null|undefined, callback: (err: Error|null, result?: Array<CategoriesRow>) => void): void {
-  const query = db.select(["category", "popularity"]).from("categories").where({ universe });
-  queryModifier(db, query, "popularity", "desc", sortBy, isSortDescending, limit, offset, (err: Error|null, categoriesInfo?: Array<CategoriesRow>): void => {
-    if (err) return callback(err);
-    if (!categoriesInfo) return callback(null);
-    // Group categories by upper case in case DB has not been fully sync'd with upper casing code. This can be removed once DB version > 2
-    const upperCaseCategoryInfo = categoriesInfo.map((category) => {
-      return {
-        category: category.category.toUpperCase(),
-        popularity: category.popularity,
+export async function getCategoriesRows(db: Knex, universe: string): Promise<Array<CategoriesRow<BigNumber>>> {
+  return db.select(["category", "nonFinalizedOpenInterest", "openInterest", "universe"]).from("categories").where({ universe });
+}
+
+export async function getMarketsTagRows(db: Knex, universe: string): Promise<Array<MarketsTagRow>> {
+  return db.select([
+    "markets.category as category",
+    "markets.openInterest as openInterest",
+    "markets.tag1 as tag1",
+    "markets.tag2 as tag2",
+    "market_state.reportingState as reportingState",
+  ]).from("markets")
+    .leftJoin("market_state", "markets.marketStateId", "market_state.marketStateId")
+    .where({ universe });
+}
+
+function buildUICategories(categoriesRows: Array<CategoriesRow<BigNumber>>, marketsTagRows: Array<MarketsTagRow>): Array<UICategory<string>> {
+  function upsertTagAggregation(r: MarketsTagRow, tagAggregationByTagName: Map<string, TagAggregation<BigNumber>>, tagProp: "tag1" | "tag2"): void {
+    if (!r[tagProp]) {
+      return;
+    }
+    let tagAggregation: TagAggregation<BigNumber> | undefined = tagAggregationByTagName.get(r[tagProp]);
+    if (tagAggregation === undefined) {
+      tagAggregation = {
+        nonFinalizedOpenInterest: new BigNumber("0", 10),
+        openInterest: new BigNumber("0", 10),
+        tagName: r[tagProp],
+        numberOfMarketsWithThisTag: 0,
       };
-    });
-    const groupedCategoryInfo = groupByAndSum(upperCaseCategoryInfo, ["category"], ["popularity"]);
-    callback(null, groupedCategoryInfo.map((categoryInfo: CategoriesRow): CategoriesRow => ({ popularity: categoryInfo.popularity.toString(), category: categoryInfo.category })));
+      tagAggregationByTagName.set(r[tagProp], tagAggregation);
+    }
+    if (r.reportingState !== ReportingState.FINALIZED) {
+      tagAggregation.nonFinalizedOpenInterest = tagAggregation.nonFinalizedOpenInterest.plus(r.openInterest);
+    }
+    tagAggregation.openInterest = tagAggregation.openInterest.plus(r.openInterest);
+    tagAggregation.numberOfMarketsWithThisTag += 1;
+  }
+
+  const tagAggregationByTagNameByCategoryName: Map<string, Map<string, TagAggregation<BigNumber>>> = new Map(); // there'll be a parent-child relationship where TagAggregation is the child and category is the parent. Tags aren't aggregated across categories. If two markets share a tag, but have different categories, that tag will build into two different TagAggregations, one for each category.
+
+  marketsTagRows.forEach((r: MarketsTagRow) => {
+    let tagAggregationByTagName: Map<string, TagAggregation<BigNumber>> | undefined = tagAggregationByTagNameByCategoryName.get(r.category);
+    if (tagAggregationByTagName === undefined) {
+      tagAggregationByTagName = new Map();
+      tagAggregationByTagNameByCategoryName.set(r.category, tagAggregationByTagName);
+    }
+    upsertTagAggregation(r, tagAggregationByTagName, "tag1");
+    upsertTagAggregation(r, tagAggregationByTagName, "tag2");
   });
+
+  return categoriesRows.map((r: CategoriesRow<BigNumber>) => {
+    let tags: Array<TagAggregation<string>> = [];
+    const tagAggregationByTagName = tagAggregationByTagNameByCategoryName.get(r.category);
+    if (tagAggregationByTagName !== undefined) {
+      tags = Array.from(tagAggregationByTagName.values()).map((taBigNumber: TagAggregation<BigNumber>) => {
+        // convert from TagAggregation<BigNumber> to TagAggregation<string>, because
+        // BigNumber is used for arithmetic when building the TagAggregation, but the
+        // UI receives numbers as strings to avoid precision loss during serialization
+        return {
+          nonFinalizedOpenInterest: taBigNumber.nonFinalizedOpenInterest.toString(),
+          openInterest: taBigNumber.openInterest.toString(),
+          tagName: taBigNumber.tagName,
+          numberOfMarketsWithThisTag: taBigNumber.numberOfMarketsWithThisTag,
+        };
+      });
+    }
+    return {
+      nonFinalizedOpenInterest: r.nonFinalizedOpenInterest.toString(),
+      openInterest: r.openInterest.toString(),
+      categoryName: r.category,
+      tags,
+    };
+  });
+}
+
+export async function getCategories(db: Knex, augur: Augur, params: t.TypeOf<typeof CategoriesParams>): Promise<Array<UICategory<string>>> {
+  const universeInfo = await db.first(["universe"]).from("universes").where({ universe: params.universe });
+  if (universeInfo === undefined) throw new Error(`Universe ${params.universe} does not exist`);
+
+  const p1: Promise<Array<CategoriesRow<BigNumber>>> = getCategoriesRows(db, params.universe);
+  const p2: Promise<Array<MarketsTagRow>> = getMarketsTagRows(db, params.universe);
+  const cs: Array<CategoriesRow<BigNumber>> = await p1;
+  const ts: Array<MarketsTagRow> = await p2;
+  return buildUICategories(cs, ts);
 }

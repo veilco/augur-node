@@ -1,43 +1,58 @@
-"use strict";
-
-const assert = require("chai").assert;
-const setupTestDb = require("../../test.database");
+const { setupTestDb, makeMockAugur, seedDb } = require("test.database");
 const { BigNumber } = require("bignumber.js");
-const { processTokensTransferredLog, processTokensTransferredLogRemoval } = require("../../../../src/blockchain/log-processors/tokens-transferred");
+const { processTokensTransferredLog, processTokensTransferredLogRemoval } = require("src/blockchain/log-processors/tokens-transferred");
+
+async function getState(db, log) {
+  return {
+    transfers: await db("transfers").where({
+      transactionHash: log.transactionHash,
+      logIndex: log.logIndex,
+    }),
+    balances: await db("balances").where({ token: log.token }),
+  };
+}
 
 describe("blockchain/log-processors/tokens-transferred", () => {
-  const test = (t) => {
-    const getState = (db, params, callback) => db("transfers").where({ transactionHash: params.log.transactionHash, logIndex: params.log.logIndex }).asCallback(callback);
-    const getTokenBalances = (db, params, callback) => db("balances").where({ token: params.log.token }).asCallback(callback);
-    it(t.description, (done) => {
-      setupTestDb((err, db) => {
-        assert.ifError(err);
-        db.transaction((trx) => {
-          processTokensTransferredLog(trx, t.params.augur, t.params.log, (err) => {
-            assert.ifError(err);
-            getState(trx, t.params, (err, records) => {
-              t.assertions.onAdded(err, records);
-              getTokenBalances(trx, t.params, (err, balances) => {
-                t.assertions.onInitialBalances(err, balances);
-                processTokensTransferredLogRemoval(trx, t.params.augur, t.params.log, (err) => {
-                  assert.ifError(err);
-                  getState(trx, t.params, (err, records) => {
-                    t.assertions.onRemoved(err, records);
-                    getTokenBalances(trx, t.params, (err, balances) => {
-                      t.assertions.onRemovedBalances(err, balances);
-                      db.destroy();
-                      done();
-                    });
-                  });
-                });
-              });
-            });
-          });
-        });
+  let db;
+  beforeEach(async () => {
+    db = await setupTestDb().then(seedDb);
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  const augur = makeMockAugur({
+    contracts: {
+      addresses: {
+        974: {
+          LegacyReputationToken: "LEGACY_REPUTATION_ADDRESS",
+        },
+      },
+    },
+    rpc: {
+      getNetworkID: () => 974,
+    },
+  });
+
+  const runTest = (t) => {
+    test(t.description, async () => {
+      return db.transaction(async (trx) => {
+        await(await processTokensTransferredLog(augur, t.params.log))(trx);
+
+        const records = await getState(trx, t.params.log);
+        t.assertions.onAdded(records.transfers);
+        t.assertions.onInitialBalances(records.balances);
+        await(await processTokensTransferredLogRemoval(augur, t.params.log))(trx);
+
+        const recordsAfterRemoval = await getState(trx, t.params.log);
+
+        t.assertions.onRemoved(recordsAfterRemoval.transfers);
+        t.assertions.onRemovedBalances(recordsAfterRemoval.balances);
       });
     });
   };
-  test({
+  runTest({
     description: "TokensTransferred log and removal",
     params: {
       log: {
@@ -49,23 +64,10 @@ describe("blockchain/log-processors/tokens-transferred", () => {
         value: "9000",
         blockNumber: 1400101,
       },
-      augur: {
-        contracts: {
-          addresses: {
-            974: {
-              LegacyReputationToken: "OTHER_ADDRESS",
-            },
-          },
-        },
-        rpc: {
-          getNetworkID: () => 974,
-        },
-      },
     },
     assertions: {
-      onAdded: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, [{
+      onAdded: (records) => {
+        expect(records).toEqual([{
           transactionHash: "TRANSACTION_HASH",
           logIndex: 0,
           sender: "FROM_ADDRESS",
@@ -75,13 +77,11 @@ describe("blockchain/log-processors/tokens-transferred", () => {
           blockNumber: 1400101,
         }]);
       },
-      onRemoved: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, []);
+      onRemoved: (records) => {
+        expect(records).toEqual([]);
       },
-      onInitialBalances: (err, balances) => {
-        assert.ifError(err);
-        assert.deepEqual(balances, [{
+      onInitialBalances: (balances) => {
+        expect(balances).toEqual([{
           token: "TOKEN_ADDRESS",
           owner: "FROM_ADDRESS",
           balance: new BigNumber("1", 10),
@@ -91,9 +91,8 @@ describe("blockchain/log-processors/tokens-transferred", () => {
           balance: new BigNumber("9000", 10),
         }]);
       },
-      onRemovedBalances: (err, balances) => {
-        assert.ifError(err);
-        assert.deepEqual(balances, [{
+      onRemovedBalances: (balances) => {
+        expect(balances).toEqual([{
           token: "TOKEN_ADDRESS",
           owner: "FROM_ADDRESS",
           balance: new BigNumber("9001", 10),
@@ -105,7 +104,7 @@ describe("blockchain/log-processors/tokens-transferred", () => {
       },
     },
   });
-  test({
+  runTest({
     description: "TokensTransferred log and removal, LegacyReputationToken",
     params: {
       log: {
@@ -117,23 +116,10 @@ describe("blockchain/log-processors/tokens-transferred", () => {
         value: "9000",
         blockNumber: 1400101,
       },
-      augur: {
-        contracts: {
-          addresses: {
-            974: {
-              LegacyReputationToken: "LEGACY_REPUTATION_ADDRESS",
-            },
-          },
-        },
-        rpc: {
-          getNetworkID: () => 974,
-        },
-      },
     },
     assertions: {
-      onAdded: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, [{
+      onAdded: (records) => {
+        expect(records).toEqual([{
           transactionHash: "TRANSACTION_HASH",
           logIndex: 0,
           sender: "FROM_ADDRESS",
@@ -143,21 +129,18 @@ describe("blockchain/log-processors/tokens-transferred", () => {
           blockNumber: 1400101,
         }]);
       },
-      onRemoved: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, []);
+      onRemoved: (records) => {
+        expect(records).toEqual([]);
       },
-      onInitialBalances: (err, balances) => {
-        assert.ifError(err);
-        assert.deepEqual(balances, []);
+      onInitialBalances: (balances) => {
+        expect(balances).toEqual([]);
       },
-      onRemovedBalances: (err, balances) => {
-        assert.ifError(err);
-        assert.deepEqual(balances, []);
+      onRemovedBalances: (balances) => {
+        expect(balances).toEqual([]);
       },
     },
   });
-  test({
+  runTest({
     description: "TokensTransferred for ShareToken log and removal",
     params: {
       log: {
@@ -170,54 +153,12 @@ describe("blockchain/log-processors/tokens-transferred", () => {
         tokenType: 1,
         market: "0x0000000000000000000000000000000000000002",
         blockNumber: 1400101,
-      },
-      augur: {
-        contracts: {
-          addresses: {
-            974: {
-              LegacyReputationToken: "OTHER_ADDRESS",
-            },
-          },
-        },
-        rpc: {
-          getNetworkID: () => 974,
-        },
-        api: {
-          Orders: {
-            getLastOutcomePrice: (p, callback) => {
-              assert.strictEqual(p._market, "0x0000000000000000000000000000000000000002");
-              if (p._outcome === 0) {
-                callback(null, "7000");
-              } else {
-                callback(null, "1250");
-              }
-            },
-          },
-        },
-        trading: {
-          calculateProfitLoss: (p) => {
-            assert.isObject(p);
-            return {
-              position: "2",
-              realized: "0",
-              unrealized: "0",
-              meanOpenPrice: "0.75",
-              queued: "0",
-            };
-          },
-          normalizePrice: p => p.price,
-        },
-        utils: {
-          convertOnChainPriceToDisplayPrice: (onChainPrice, minDisplayPrice, tickSize) => {
-            return onChainPrice.times(tickSize).plus(minDisplayPrice);
-          },
-        },
+        transactionIndex: 1,
       },
     },
     assertions: {
-      onAdded: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, [{
+      onAdded: (records) => {
+        expect(records).toEqual([{
           transactionHash: "TRANSACTION_HASH",
           logIndex: 0,
           sender: "FROM_ADDRESS",
@@ -227,13 +168,11 @@ describe("blockchain/log-processors/tokens-transferred", () => {
           blockNumber: 1400101,
         }]);
       },
-      onRemoved: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, []);
+      onRemoved: (records) => {
+        expect(records).toEqual([]);
       },
-      onInitialBalances: (err, balances) => {
-        assert.ifError(err);
-        assert.deepEqual(balances, [
+      onInitialBalances: (balances) => {
+        expect(balances).toEqual([
           {
             owner: "FROM_ADDRESS",
             token: "TOKEN_ADDRESS",
@@ -246,8 +185,8 @@ describe("blockchain/log-processors/tokens-transferred", () => {
           },
         ]);
       },
-      onRemovedBalances: (err, balances) => {
-        assert.ifError(err);
+      onRemovedBalances: (balances) => {
+
       },
     },
   });

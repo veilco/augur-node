@@ -1,23 +1,24 @@
-"use strict";
-
-const assert = require("chai").assert;
-const setupTestDb = require("../../test.database");
-const {getTradingHistory} = require("../../../../src/server/getters/get-trading-history");
+const { setupTestDb, seedDb } = require("test.database");
+const { dispatchJsonRpcRequest } = require("src/server/dispatch-json-rpc-request");
 
 describe("server/getters/get-trading-history", () => {
-  const test = (t) => {
-    it(t.description, (done) => {
-      setupTestDb((err, db) => {
-        assert.ifError(err);
-        getTradingHistory(db, t.params.universe, t.params.account, t.params.marketId, t.params.outcome, t.params.orderType, t.params.earliestCreationTime, t.params.latestCreationTime, t.params.sortBy, t.params.isSortDescending, t.params.limit, t.params.offset, false, (err, userTradingHistory) => {
-          t.assertions(err, userTradingHistory);
-          db.destroy();
-          done();
-        });
-      });
+  let db;
+  beforeEach(async () => {
+    db = await setupTestDb().then(seedDb);
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  const runTest = (t) => {
+    test(t.description, async () => {
+      t.method = "getTradingHistory";
+      const userTradingHistory = await dispatchJsonRpcRequest(db, t, null);
+      t.assertions(userTradingHistory);
     });
   };
-  test({
+  runTest({
     description: "user was filler in 1 trade in market and outcome",
     params: {
       universe: null,
@@ -30,9 +31,8 @@ describe("server/getters/get-trading-history", () => {
       limit: null,
       offset: null,
     },
-    assertions: (err, userTradingHistory) => {
-      assert.ifError(err);
-      assert.deepEqual(userTradingHistory, [{
+    assertions: (userTradingHistory) => {
+      expect(userTradingHistory).toEqual([{
         transactionHash: "0x0000000000000000000000000000000000000000000000000000000000000C00",
         logIndex: 0,
         orderId: "0x1100000000000000000000000000000000000000000000000000000000000000",
@@ -43,6 +43,8 @@ describe("server/getters/get-trading-history", () => {
         marketCreatorFees: "0",
         reporterFees: "0",
         selfFilled: false,
+        creator: "0x0000000000000000000000000000000000000b0b",
+        filler: "0x000000000000000000000000000000000000d00d",
         settlementFees: "0",
         marketId: "0x0000000000000000000000000000000000000001",
         outcome: 0,
@@ -60,6 +62,8 @@ describe("server/getters/get-trading-history", () => {
         price: "4.2",
         reporterFees: "0",
         selfFilled: false,
+        creator: "0x0000000000000000000000000000000000000b0b",
+        filler: "0x000000000000000000000000000000000000d00d",
         settlementFees: "0",
         shareToken: "0x0100000000000000000000000000000000000000",
         timestamp: 1509065474,
@@ -69,7 +73,7 @@ describe("server/getters/get-trading-history", () => {
       }]);
     },
   });
-  test({
+  runTest({
     description: "user was creator in many markets and outcomes",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -82,9 +86,8 @@ describe("server/getters/get-trading-history", () => {
       limit: null,
       offset: null,
     },
-    assertions: (err, userTradingHistory) => {
-      assert.ifError(err);
-      assert.deepEqual(userTradingHistory, [
+    assertions: (userTradingHistory) => {
+      expect(userTradingHistory).toEqual([
         {
           amount: "0.1",
           logIndex: 0,
@@ -96,6 +99,8 @@ describe("server/getters/get-trading-history", () => {
           price: "4.2",
           reporterFees: "0",
           selfFilled: true,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x0000000000000000000000000000000000000b0b",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1509065474,
@@ -113,6 +118,8 @@ describe("server/getters/get-trading-history", () => {
           price: "4.2",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1509065474,
@@ -131,6 +138,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474515,
@@ -148,6 +157,8 @@ describe("server/getters/get-trading-history", () => {
           price: "4.2",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x000000000000000000000000000000000000d00d",
+          filler: "0x0000000000000000000000000000000000000b0b",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474515,
@@ -167,6 +178,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474500,
@@ -185,6 +198,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474500,
@@ -203,6 +218,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474500,
@@ -221,6 +238,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474500,
@@ -239,6 +258,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474500,
@@ -257,6 +278,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474500,
@@ -275,6 +298,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474500,
@@ -284,7 +309,7 @@ describe("server/getters/get-trading-history", () => {
       ]);
     },
   });
-  test({
+  runTest({
     description: "user was creator in many markets and outcomes, filter to one market",
     params: {
       universe: null,
@@ -297,9 +322,8 @@ describe("server/getters/get-trading-history", () => {
       limit: null,
       offset: null,
     },
-    assertions: (err, userTradingHistory) => {
-      assert.ifError(err);
-      assert.deepEqual(userTradingHistory, [
+    assertions: (userTradingHistory) => {
+      expect(userTradingHistory).toEqual([
         {
           transactionHash: "0x0000000000000000000000000000000000000000000000000000000000000C00",
           logIndex: 0,
@@ -312,6 +336,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474500,
@@ -328,6 +354,8 @@ describe("server/getters/get-trading-history", () => {
           price: "4.2",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1509065474,
@@ -338,7 +366,7 @@ describe("server/getters/get-trading-history", () => {
       ]);
     },
   });
-  test({
+  runTest({
     description: "user was creator in many markets and outcomes, filter by timestamp",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -353,9 +381,8 @@ describe("server/getters/get-trading-history", () => {
       earliestCreationTime: 1506474514,
       latestCreationTime: 1506474516,
     },
-    assertions: (err, userTradingHistory) => {
-      assert.ifError(err);
-      assert.deepEqual(userTradingHistory, [
+    assertions: (userTradingHistory) => {
+      expect(userTradingHistory).toEqual([
         {
           transactionHash: "0x0000000000000000000000000000000000000000000000000000000000000C04",
           logIndex: 0,
@@ -368,6 +395,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474515,
@@ -385,6 +414,8 @@ describe("server/getters/get-trading-history", () => {
           price: "4.2",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x000000000000000000000000000000000000d00d",
+          filler: "0x0000000000000000000000000000000000000b0b",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474515,
@@ -395,7 +426,7 @@ describe("server/getters/get-trading-history", () => {
       ]);
     },
   });
-  test({
+  runTest({
     description: "lookup trades by market, not account, filter by timestamp",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -410,9 +441,8 @@ describe("server/getters/get-trading-history", () => {
       earliestCreationTime: 1506474514,
       latestCreationTime: 1506474516,
     },
-    assertions: (err, userTradingHistory) => {
-      assert.ifError(err);
-      assert.deepEqual(userTradingHistory, [
+    assertions: (userTradingHistory) => {
+      expect(userTradingHistory).toEqual([
         {
           transactionHash: "0x0000000000000000000000000000000000000000000000000000000000000C04",
           logIndex: 0,
@@ -425,6 +455,8 @@ describe("server/getters/get-trading-history", () => {
           marketCreatorFees: "0",
           reporterFees: "0",
           selfFilled: false,
+          creator: "0x0000000000000000000000000000000000000b0b",
+          filler: "0x000000000000000000000000000000000000d00d",
           settlementFees: "0",
           shareToken: "0x0100000000000000000000000000000000000000",
           timestamp: 1506474515,
@@ -434,7 +466,7 @@ describe("server/getters/get-trading-history", () => {
       ]);
     },
   });
-  test({
+  runTest({
     description: "user has not performed any trades",
     params: {
       universe: "0x000000000000000000000000000000000000000b",
@@ -447,9 +479,8 @@ describe("server/getters/get-trading-history", () => {
       limit: null,
       offset: null,
     },
-    assertions: (err, userTradingHistory) => {
-      assert.ifError(err);
-      assert.deepEqual(userTradingHistory, []);
+    assertions: (userTradingHistory) => {
+      expect(userTradingHistory).toEqual([]);
     },
   });
 });

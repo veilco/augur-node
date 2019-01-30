@@ -1,4 +1,4 @@
-FROM node:8 as builder
+FROM node:10.12 as builder
 
 WORKDIR /app/
 
@@ -15,12 +15,12 @@ COPY test test
 COPY proto proto
 COPY src src
 
-RUN yarn build
-RUN yarn pack
+RUN npm run build:ts
+RUN npm pack
 
 COPY knexfile.js knexfile.js
 
-FROM node:8
+FROM node:10.12
 EXPOSE 9001
 WORKDIR /app/
 

@@ -1,69 +1,85 @@
-"use strict";
-
 const Augur = require("augur.js");
-const assert = require("chai").assert;
-const {series} = require("async");
-const {BigNumber} = require("bignumber.js");
-const setupTestDb = require("../../test.database");
-const {processMarketCreatedLog, processMarketCreatedLogRemoval} = require("../../../../src/blockchain/log-processors/market-created");
-const {getMarketsWithReportingState} = require("../../../../src/server/getters/database");
+const { BigNumber } = require("bignumber.js");
+const { setupTestDb, makeLogFactory, makeMockAugur } = require("test.database");
+const { processMarketCreatedLog, processMarketCreatedLogRemoval } = require("src/blockchain/log-processors/market-created");
+const { getMarketsWithReportingState } = require("src/server/getters/database");
+
+async function getState(db, log) {
+  return {
+    markets: await getMarketsWithReportingState(db).where({ "markets.marketId": log.market }),
+    categories: await db("categories").where({ category: log.topic }),
+    outcomes: await db("outcomes").where({ marketId: log.market }),
+    tokens: await db("tokens").select(["contractAddress", "symbol", "marketId", "outcome"]).where({ marketId: log.market }),
+    search: await db("search_en").where({ marketId: log.market }),
+    transfers: await db("transfers").where({ recipient: log.market }),
+  };
+}
 
 describe("blockchain/log-processors/market-created", () => {
-  const test = (t) => {
-    const getState = (db, params, callback) => series({
-      markets: next => getMarketsWithReportingState(db).where({"markets.marketId": params.log.market}).asCallback(next),
-      categories: next => db("categories").where({category: params.log.topic}).asCallback(next),
-      outcomes: next => db("outcomes").where({marketId: params.log.market}).asCallback(next),
-      tokens: next => db("tokens").select(["contractAddress", "symbol", "marketId", "outcome"]).where({marketId: params.log.market}).asCallback(next),
-      search: next => db("search_en").where({marketId: params.log.market}).asCallback(next),
-    }, callback);
-    it(t.description, (done) => {
-      setupTestDb((err, db) => {
-        assert.ifError(err);
-        db.transaction((trx) => {
-          processMarketCreatedLog(trx, t.params.augur, t.params.log, (err) => {
-            assert.ifError(err);
-            getState(trx, t.params, (err, records) => {
-              t.assertions.onAdded(err, records, false);
-              processMarketCreatedLogRemoval(trx, t.params.augur, t.params.log, (err) => {
-                assert.ifError(err);
-                getState(trx, t.params, (err, records) => {
-                  t.assertions.onRemoved(err, records);
-                  processMarketCreatedLog(trx, t.params.augur, t.params.log, (err) => {
-                    assert.ifError(err);
-                    getState(trx, t.params, (err, records) => {
-                      t.assertions.onAdded(err, records, true);
-                      processMarketCreatedLogRemoval(trx, t.params.augur, t.params.log, (err) => {
-                        assert.ifError(err);
-                        getState(trx, t.params, (err, records) => {
-                          t.assertions.onRemoved(err, records);
-                          db.destroy();
-                          done();
-                        });
-                      });
-                    });
-                  });
-                });
-              });
-            });
-          });
-        });
+  let db;
+  beforeEach(async () => {
+    const L = makeLogFactory("0x000000000000000000000000000000000000000b");
+    const logs = [
+      L.UniverseCreated(),
+      L.TokensMinted({
+        token: "REP_TOKEN",
+        target: "0x1111111111111111111111111111111111111111",
+        market: "0x0000000000000000000000000000000000000000",
+        amount: "16777216000000000000000000",
+        transactionHash: "minting1",
+      }),
+      L.TokensMinted({
+        token: "REP_TOKEN",
+        target: "0x1111111111111111111111111111111111111112",
+        market: "0x0000000000000000000000000000000000000000",
+        amount: "16777216000000000000000000",
+        transactionHash: "minting2",
+      }),
+      L.TokensMinted({
+        token: "REP_TOKEN",
+        target: "0x1111111111111111111111111111111111111113",
+        market: "0x0000000000000000000000000000000000000000",
+        amount: "16777216000000000000000000",
+        transactionHash: "minting3",
+        blockNumber: 7,  // blocks don't get processed if they don't have any logs
+      }),
+    ];
+    db = await setupTestDb(makeMockAugur(), logs, L.getBlockDetails());
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+  });
+
+  const runTest = (t) => {
+    test(t.description, async () => {
+      return db.transaction(async (trx) => {
+        await(await processMarketCreatedLog(t.params.augur, t.params.log))(trx);
+        t.assertions.onAdded(await getState(trx, t.params.log), false);
+        await(await processMarketCreatedLogRemoval(t.params.augur, t.params.log))(trx);
+        t.assertions.onRemoved(await getState(trx, t.params.log));
+        await(await processMarketCreatedLog(t.params.augur, t.params.log))(trx);
+        t.assertions.onAdded(await getState(trx, t.params.log), true);
+        await(await processMarketCreatedLogRemoval(t.params.augur, t.params.log))(trx);
+        t.assertions.onRemoved(await getState(trx, t.params.log));
       });
     });
   };
   const constants = new Augur().constants;
-  test({
+  runTest({
     description: "yesNo market MarketCreated log and removal",
     params: {
       log: {
         blockNumber: 7,
+        transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A000",
+        logIndex: 0,
         universe: "0x000000000000000000000000000000000000000b",
         market: "0x1111111111111111111111111111111111111111",
         marketCreator: "0x0000000000000000000000000000000000000b0b",
         marketCreationFee: "0.1",
         topic: "TEST_CATEGORY",
         marketType: "0",
-        minPrice: (new BigNumber("0", 10)).toFixed(),
+        minPrice: (new BigNumber("0", 10)).toString(),
         maxPrice: "1",
         description: "this is a test market",
         extraInfo: {
@@ -72,51 +88,53 @@ describe("blockchain/log-processors/market-created", () => {
           resolutionSource: "https://www.trusted-third-party-co.com",
         },
       },
-      augur: {
+      augur: makeMockAugur({
         api: {
           Market: {
-            getFeeWindow: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "0x1000000000000000000000000000000000000001");
+            getFeeWindow: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("0x1000000000000000000000000000000000000001");
             },
-            getEndTime: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "4886718345");
+            getEndTime: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("4886718345");
             },
-            getDesignatedReporter: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "0x000000000000000000000000000000000000b0b2");
+            getDesignatedReporter: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("0x000000000000000000000000000000000000b0b2");
             },
-            getNumTicks: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "10000");
+            getNumTicks: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("10000");
             },
-            getMarketCreatorSettlementFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "100");
+            getMarketCreatorSettlementFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("100");
             },
-            getMarketCreatorMailbox: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "0xbbb1111111111111111111111111111111111111");
+            getMarketCreatorMailbox: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("0xbbb1111111111111111111111111111111111111");
             },
-            getShareToken: (p, callback) => {
-              callback(null, `SHARE_TOKEN_${p._outcome}`);
+            getShareToken: (p) => {
+              return Promise.resolve(`SHARE_TOKEN_${p._outcome}`);
+            },
+            getValidityBondAttoeth: (p) => {
+              return Promise.resolve("800");
             },
           },
           Universe: {
-            getOrCacheReportingFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x000000000000000000000000000000000000000b");
-              callback(null, "1000");
+            getOrCacheReportingFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x000000000000000000000000000000000000000b");
+              return Promise.resolve("1000");
             },
           },
         },
         constants,
-      },
+      }),
     },
     assertions: {
-      onAdded: (err, records, isReAdded) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onAdded: (records, isReAdded) => {
+        expect(records).toEqual({
           markets: [{
             marketId: "0x1111111111111111111111111111111111111111",
             universe: "0x000000000000000000000000000000000000000b",
@@ -125,9 +143,11 @@ describe("blockchain/log-processors/market-created", () => {
             minPrice: new BigNumber("0", 10),
             maxPrice: new BigNumber("1", 10),
             marketCreator: "0x0000000000000000000000000000000000000b0b",
+            transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A000",
+            logIndex: 0,
             creationBlockNumber: 7,
             creationFee: new BigNumber("0.1", 10),
-            creationTime: 10000000,
+            creationTime: 7,
             reportingFeeRate: new BigNumber("0.001", 10),
             disputeRounds: null,
             marketCreatorFeeRate: new BigNumber("0.01", 10),
@@ -135,19 +155,20 @@ describe("blockchain/log-processors/market-created", () => {
             marketCreatorMailbox: "0xbbb1111111111111111111111111111111111111",
             marketCreatorMailboxOwner: "0x0000000000000000000000000000000000000b0b",
             initialReportSize: null,
+            validityBondSize: new BigNumber("800", 10),
             category: "TEST_CATEGORY",
             tag1: "TEST_TAG_1",
             tag2: "TEST_TAG_2",
             volume: new BigNumber("0", 10),
             shareVolume: new BigNumber("0", 10),
             sharesOutstanding: new BigNumber("0", 10),
-            openInterest: "0",
+            openInterest: new BigNumber("0", 10),
             reportingState: "PRE_REPORTING",
             feeWindow: "0x1000000000000000000000000000000000000001",
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: isReAdded ? 19 : 18,
+            marketStateId: isReAdded ? 2 : 1,
             shortDescription: "this is a test market",
             longDescription: "this is the long description of a test market",
             scalarDenomination: null,
@@ -163,7 +184,8 @@ describe("blockchain/log-processors/market-created", () => {
           }],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [{
@@ -201,37 +223,68 @@ describe("blockchain/log-processors/market-created", () => {
             marketId: "0x1111111111111111111111111111111111111111",
             outcome: 1,
           }],
+          transfers: [
+            {
+              blockNumber: 2,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111111",
+              sender: null,
+              token: "REP_TOKEN",
+              value: new BigNumber("16777216000000000000000000", 10),
+              transactionHash: "minting1",
+            },
+            {
+              blockNumber: 7,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111111",
+              sender: "0x0000000000000000000000000000000000000b0b",
+              token: "ether",
+              transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A000",
+              value: new BigNumber("800", 10),
+            },
+          ],
         });
       },
-      onRemoved: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onRemoved: (records) => {
+        expect(records).toEqual({
           markets: [],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [],
           search: [],
           tokens: [],
+          transfers: [{
+            blockNumber: 2,
+            logIndex: 0,
+            recipient: "0x1111111111111111111111111111111111111111",
+            sender: null,
+            token: "REP_TOKEN",
+            value: new BigNumber("16777216000000000000000000", 10),
+            transactionHash: "minting1",
+          }],
         });
       },
     },
   });
-  test({
+  runTest({
     description: "categorical market MarketCreated log and removal",
     params: {
       log: {
         blockNumber: 7,
+        transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A001",
+        logIndex: 0,
         universe: "0x000000000000000000000000000000000000000b",
         market: "0x1111111111111111111111111111111111111112",
         marketCreator: "0x0000000000000000000000000000000000000b0b",
         marketCreationFee: "0.1",
         topic: "TEST_CATEGORY",
         marketType: "1",
-        minPrice: (new BigNumber("0", 10)).toFixed(),
-        maxPrice: (new BigNumber("1", 10)).toFixed(),
+        minPrice: (new BigNumber("0", 10)).toString(),
+        maxPrice: (new BigNumber("1", 10)).toString(),
         description: "this is a test market",
         outcomes: ["test outcome 0", "test outcome 1", "test outcome 2", "test outcome 3"],
         extraInfo: {
@@ -240,51 +293,54 @@ describe("blockchain/log-processors/market-created", () => {
           resolutionSource: "https://www.trusted-third-party-co.com",
         },
       },
-      augur: {
+      augur: makeMockAugur({
         api: {
           Market: {
-            getFeeWindow: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111112");
-              callback(null, "0x1000000000000000000000000000000000000001");
+            getFeeWindow: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111112");
+              return Promise.resolve("0x1000000000000000000000000000000000000001");
             },
-            getEndTime: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111112");
-              callback(null, "4886718345");
+            getEndTime: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111112");
+              return Promise.resolve("4886718345");
             },
-            getDesignatedReporter: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111112");
-              callback(null, "0x000000000000000000000000000000000000b0b2");
+            getDesignatedReporter: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111112");
+              return Promise.resolve("0x000000000000000000000000000000000000b0b2");
             },
-            getNumTicks: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111112");
-              callback(null, "10000");
+            getNumTicks: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111112");
+              return Promise.resolve("10000");
             },
-            getMarketCreatorSettlementFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111112");
-              callback(null, "100");
+            getMarketCreatorSettlementFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111112");
+              return Promise.resolve("100");
             },
-            getMarketCreatorMailbox: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111112");
-              callback(null, "0xbbb1111111111111111111111111111111111112");
+            getMarketCreatorMailbox: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111112");
+              return Promise.resolve("0xbbb1111111111111111111111111111111111112");
             },
-            getShareToken: (p, callback) => {
-              callback(null, `SHARE_TOKEN_${p._outcome}`);
+            getShareToken: (p) => {
+              return Promise.resolve(`SHARE_TOKEN_${p._outcome}`);
+            },
+            getValidityBondAttoeth: (p) => {
+              return Promise.resolve("800");
             },
           },
           Universe: {
-            getOrCacheReportingFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x000000000000000000000000000000000000000b");
-              callback(null, "1000");
+            getOrCacheReportingFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x000000000000000000000000000000000000000b");
+              return Promise.resolve("1000");
             },
           },
         },
         constants,
-      },
+      }),
     },
     assertions: {
-      onAdded: (err, records, isReAdded) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onAdded: (records, isReAdded) => {
+
+        expect(records).toEqual({
           markets: [{
             marketId: "0x1111111111111111111111111111111111111112",
             universe: "0x000000000000000000000000000000000000000b",
@@ -293,9 +349,11 @@ describe("blockchain/log-processors/market-created", () => {
             minPrice: new BigNumber("0", 10),
             maxPrice: new BigNumber("1", 10),
             marketCreator: "0x0000000000000000000000000000000000000b0b",
+            transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A001",
+            logIndex: 0,
             creationBlockNumber: 7,
             creationFee: new BigNumber("0.1", 10),
-            creationTime: 10000000,
+            creationTime: 7,
             reportingFeeRate: new BigNumber("0.001", 10),
             disputeRounds: null,
             marketCreatorFeeRate: new BigNumber("0.01", 10),
@@ -303,19 +361,20 @@ describe("blockchain/log-processors/market-created", () => {
             marketCreatorMailbox: "0xbbb1111111111111111111111111111111111112",
             marketCreatorMailboxOwner: "0x0000000000000000000000000000000000000b0b",
             initialReportSize: null,
+            validityBondSize: new BigNumber("800", 10),
             category: "TEST_CATEGORY",
             tag1: "TEST_TAG_1",
             tag2: "TEST_TAG_2",
             volume: new BigNumber("0", 10),
             shareVolume: new BigNumber("0", 10),
             sharesOutstanding: new BigNumber("0", 10),
-            openInterest: "0",
+            openInterest: new BigNumber("0", 10),
             reportingState: "PRE_REPORTING",
             feeWindow: "0x1000000000000000000000000000000000000001",
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: isReAdded ? 19 : 18,
+            marketStateId: isReAdded ? 2 : 1,
             shortDescription: "this is a test market",
             longDescription: "this is the long description of a test market",
             scalarDenomination: null,
@@ -331,7 +390,8 @@ describe("blockchain/log-processors/market-created", () => {
           }],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [{
@@ -393,37 +453,68 @@ describe("blockchain/log-processors/market-created", () => {
             marketId: "0x1111111111111111111111111111111111111112",
             outcome: 3,
           }],
+          transfers: [
+            {
+              blockNumber: 3,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111112",
+              sender: null,
+              token: "REP_TOKEN",
+              value: new BigNumber("16777216000000000000000000", 10),
+              transactionHash: "minting2",
+            },
+            {
+              blockNumber: 7,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111112",
+              sender: "0x0000000000000000000000000000000000000b0b",
+              token: "ether",
+              transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A001",
+              value: new BigNumber("800", 10),
+            },
+          ],
         });
       },
-      onRemoved: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onRemoved: (records) => {
+        expect(records).toEqual({
           markets: [],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [],
           search: [],
           tokens: [],
+          transfers: [{
+            blockNumber: 3,
+            logIndex: 0,
+            recipient: "0x1111111111111111111111111111111111111112",
+            sender: null,
+            token: "REP_TOKEN",
+            value: new BigNumber("16777216000000000000000000", 10),
+            transactionHash: "minting2",
+          }],
         });
       },
     },
   });
-  test({
+  runTest({
     description: "scalar market MarketCreated log and removal",
     params: {
       log: {
         blockNumber: 7,
+        transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A002",
+        logIndex: 0,
         universe: "0x000000000000000000000000000000000000000b",
         market: "0x1111111111111111111111111111111111111113",
         marketCreator: "0x0000000000000000000000000000000000000b0b",
         marketCreationFee: "0.1",
         topic: "TEST_CATEGORY",
         marketType: "2",
-        minPrice: (new BigNumber("-3", 10)).toFixed(),
-        maxPrice: (new BigNumber("15.2", 10)).toFixed(),
+        minPrice: (new BigNumber("-3", 10)).toString(),
+        maxPrice: (new BigNumber("15.2", 10)).toString(),
         description: "this is a test market",
         extraInfo: {
           tags: ["TEST_TAG_1", "TEST_TAG_2"],
@@ -431,51 +522,53 @@ describe("blockchain/log-processors/market-created", () => {
           resolutionSource: "https://www.trusted-third-party-co.com",
         },
       },
-      augur: {
+      augur: makeMockAugur({
         api: {
           Market: {
-            getFeeWindow: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111113");
-              callback(null, "0x1000000000000000000000000000000000000001");
+            getFeeWindow: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111113");
+              return Promise.resolve("0x1000000000000000000000000000000000000001");
             },
-            getEndTime: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111113");
-              callback(null, "4886718345");
+            getEndTime: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111113");
+              return Promise.resolve("4886718345");
             },
-            getDesignatedReporter: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111113");
-              callback(null, "0x000000000000000000000000000000000000b0b2");
+            getDesignatedReporter: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111113");
+              return Promise.resolve("0x000000000000000000000000000000000000b0b2");
             },
-            getNumTicks: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111113");
-              callback(null, "10000");
+            getNumTicks: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111113");
+              return Promise.resolve("10000");
             },
-            getMarketCreatorSettlementFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111113");
-              callback(null, "100");
+            getMarketCreatorSettlementFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111113");
+              return Promise.resolve("100");
             },
-            getMarketCreatorMailbox: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111113");
-              callback(null, "0xbbb1111111111111111111111111111111111113");
+            getMarketCreatorMailbox: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111113");
+              return Promise.resolve("0xbbb1111111111111111111111111111111111113");
             },
-            getShareToken: (p, callback) => {
-              callback(null, `SHARE_TOKEN_${p._outcome}`);
+            getShareToken: (p) => {
+              return Promise.resolve(`SHARE_TOKEN_${p._outcome}`);
+            },
+            getValidityBondAttoeth: (p) => {
+              return Promise.resolve("800");
             },
           },
           Universe: {
-            getOrCacheReportingFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x000000000000000000000000000000000000000b");
-              callback(null, "1000");
+            getOrCacheReportingFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x000000000000000000000000000000000000000b");
+              return Promise.resolve("1000");
             },
           },
         },
         constants,
-      },
+      }),
     },
     assertions: {
-      onAdded: (err, records, isReAdded) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onAdded: (records, isReAdded) => {
+        expect(records).toEqual({
           markets: [{
             marketId: "0x1111111111111111111111111111111111111113",
             universe: "0x000000000000000000000000000000000000000b",
@@ -484,9 +577,11 @@ describe("blockchain/log-processors/market-created", () => {
             minPrice: new BigNumber("-3", 10),
             maxPrice: new BigNumber("15.2", 10),
             marketCreator: "0x0000000000000000000000000000000000000b0b",
+            transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A002",
+            logIndex: 0,
             creationBlockNumber: 7,
             creationFee: new BigNumber("0.1", 10),
-            creationTime: 10000000,
+            creationTime: 7,
             reportingFeeRate: new BigNumber("0.001", 10),
             disputeRounds: null,
             marketCreatorFeeRate: new BigNumber("0.01", 10),
@@ -494,19 +589,20 @@ describe("blockchain/log-processors/market-created", () => {
             marketCreatorMailbox: "0xbbb1111111111111111111111111111111111113",
             marketCreatorMailboxOwner: "0x0000000000000000000000000000000000000b0b",
             initialReportSize: null,
+            validityBondSize: new BigNumber("800", 10),
             category: "TEST_CATEGORY",
             tag1: "TEST_TAG_1",
             tag2: "TEST_TAG_2",
             volume: new BigNumber("0", 10),
             shareVolume: new BigNumber("0", 10),
             sharesOutstanding: new BigNumber("0", 10),
-            openInterest: "0",
+            openInterest: new BigNumber("0", 10),
             reportingState: "PRE_REPORTING",
             feeWindow: "0x1000000000000000000000000000000000000001",
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: isReAdded ? 19 : 18,
+            marketStateId: isReAdded ? 2 : 1,
             shortDescription: "this is a test market",
             longDescription: "this is the long description of a test market",
             scalarDenomination: null,
@@ -522,7 +618,8 @@ describe("blockchain/log-processors/market-created", () => {
           }],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [{
@@ -560,75 +657,109 @@ describe("blockchain/log-processors/market-created", () => {
             marketId: "0x1111111111111111111111111111111111111113",
             outcome: 1,
           }],
+          transfers: [
+            {
+              blockNumber: 7,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111113",
+              sender: null,
+              token: "REP_TOKEN",
+              value: new BigNumber("16777216000000000000000000", 10),
+              transactionHash: "minting3",
+            },
+            {
+              blockNumber: 7,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111113",
+              sender: "0x0000000000000000000000000000000000000b0b",
+              token: "ether",
+              transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A002",
+              value: new BigNumber("800", 10),
+            },
+          ],
         });
       },
-      onRemoved: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onRemoved: (records) => {
+        expect(records).toEqual({
           markets: [],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [],
           search: [],
           tokens: [],
+          transfers: [{
+            blockNumber: 7,
+            logIndex: 0,
+            recipient: "0x1111111111111111111111111111111111111113",
+            sender: null,
+            token: "REP_TOKEN",
+            value: new BigNumber("16777216000000000000000000", 10),
+            transactionHash: "minting3",
+          }],
         });
       },
     },
   });
-  test({
+  runTest({
     description: "yesNo market MarketCreated log and removal, with NULL extraInfo",
     params: {
       log: {
         blockNumber: 7,
+        transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A003",
+        logIndex: 0,
         universe: "0x000000000000000000000000000000000000000b",
         market: "0x1111111111111111111111111111111111111111",
         marketCreator: "0x0000000000000000000000000000000000000b0b",
         marketCreationFee: "0.1",
         topic: "TEST_CATEGORY",
         marketType: "0",
-        minPrice: (new BigNumber("0", 10)).toFixed(),
-        maxPrice: (new BigNumber("1", 10)).toFixed(),
+        minPrice: (new BigNumber("0", 10)).toString(),
+        maxPrice: (new BigNumber("1", 10)).toString(),
         description: "this is a test market",
         extraInfo: null,
       },
       augur: {
         api: {
           Market: {
-            getFeeWindow: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "0x1000000000000000000000000000000000000001");
+            getFeeWindow: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("0x1000000000000000000000000000000000000001");
             },
-            getEndTime: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "4886718345");
+            getEndTime: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("4886718345");
             },
-            getDesignatedReporter: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "0x000000000000000000000000000000000000b0b2");
+            getDesignatedReporter: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("0x000000000000000000000000000000000000b0b2");
             },
-            getNumTicks: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "10000");
+            getNumTicks: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("10000");
             },
-            getMarketCreatorSettlementFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "100");
+            getMarketCreatorSettlementFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("100");
             },
-            getMarketCreatorMailbox: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "0xbbb1111111111111111111111111111111111111");
+            getMarketCreatorMailbox: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("0xbbb1111111111111111111111111111111111111");
             },
-            getShareToken: (p, callback) => {
-              callback(null, `SHARE_TOKEN_${p._outcome}`);
+            getShareToken: (p) => {
+              return Promise.resolve(`SHARE_TOKEN_${p._outcome}`);
+            },
+            getValidityBondAttoeth: (p) => {
+              return Promise.resolve("800");
             },
           },
           Universe: {
-            getOrCacheReportingFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x000000000000000000000000000000000000000b");
-              callback(null, "1000");
+            getOrCacheReportingFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x000000000000000000000000000000000000000b");
+              return Promise.resolve("1000");
             },
           },
         },
@@ -636,9 +767,9 @@ describe("blockchain/log-processors/market-created", () => {
       },
     },
     assertions: {
-      onAdded: (err, records, isReAdded) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onAdded: (records, isReAdded) => {
+
+        expect(records).toEqual({
           markets: [{
             marketId: "0x1111111111111111111111111111111111111111",
             universe: "0x000000000000000000000000000000000000000b",
@@ -647,9 +778,11 @@ describe("blockchain/log-processors/market-created", () => {
             minPrice: new BigNumber("0", 10),
             maxPrice: new BigNumber("1", 10),
             marketCreator: "0x0000000000000000000000000000000000000b0b",
+            transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A003",
+            logIndex: 0,
             creationBlockNumber: 7,
             creationFee: new BigNumber("0.1", 10),
-            creationTime: 10000000,
+            creationTime: 7,
             reportingFeeRate: new BigNumber("0.001", 10),
             disputeRounds: null,
             marketCreatorFeeRate: new BigNumber("0.01", 10),
@@ -657,19 +790,20 @@ describe("blockchain/log-processors/market-created", () => {
             marketCreatorMailbox: "0xbbb1111111111111111111111111111111111111",
             marketCreatorMailboxOwner: "0x0000000000000000000000000000000000000b0b",
             initialReportSize: null,
+            validityBondSize: new BigNumber("800", 10),
             category: "TEST_CATEGORY",
             tag1: null,
             tag2: null,
             volume: new BigNumber("0", 10),
             shareVolume: new BigNumber("0", 10),
             sharesOutstanding: new BigNumber("0", 10),
-            openInterest: "0",
+            openInterest: new BigNumber("0", 10),
             reportingState: "PRE_REPORTING",
             feeWindow: "0x1000000000000000000000000000000000000001",
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: isReAdded ? 19 : 18,
+            marketStateId: isReAdded ? 2 : 1,
             shortDescription: "this is a test market",
             longDescription: null,
             scalarDenomination: null,
@@ -685,7 +819,8 @@ describe("blockchain/log-processors/market-created", () => {
           }],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [{
@@ -723,36 +858,68 @@ describe("blockchain/log-processors/market-created", () => {
             marketId: "0x1111111111111111111111111111111111111111",
             outcome: 1,
           }],
+          transfers: [
+            {
+              blockNumber: 2,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111111",
+              sender: null,
+              token: "REP_TOKEN",
+              value: new BigNumber("16777216000000000000000000", 10),
+              transactionHash: "minting1",
+            },
+            {
+              blockNumber: 7,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111111",
+              sender: "0x0000000000000000000000000000000000000b0b",
+              token: "ether",
+              transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A003",
+              value: new BigNumber("800", 10),
+            },
+          ],
         });
       },
-      onRemoved: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onRemoved: (records) => {
+
+        expect(records).toEqual({
           markets: [],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [],
           search: [],
           tokens: [],
+          transfers: [{
+            blockNumber: 2,
+            logIndex: 0,
+            recipient: "0x1111111111111111111111111111111111111111",
+            sender: null,
+            token: "REP_TOKEN",
+            value: new BigNumber("16777216000000000000000000", 10),
+            transactionHash: "minting1",
+          }],
         });
       },
     },
   });
-  test({
+  runTest({
     description: "yesNo market MarketCreated log and removal, with 0 creator fee rate",
     params: {
       log: {
         blockNumber: 7,
+        transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A004",
+        logIndex: 0,
         universe: "0x000000000000000000000000000000000000000b",
         market: "0x1111111111111111111111111111111111111111",
         marketCreator: "0x0000000000000000000000000000000000000b0b",
         marketCreationFee: "0",
         topic: "TEST_CATEGORY",
         marketType: "0",
-        minPrice: (new BigNumber("0", 10)).toFixed(),
+        minPrice: (new BigNumber("0", 10)).toString(),
         maxPrice: "1",
         description: "this is a test market",
         extraInfo: {
@@ -761,55 +928,58 @@ describe("blockchain/log-processors/market-created", () => {
           resolutionSource: "https://www.trusted-third-party-co.com",
         },
       },
-      augur: {
+      augur: makeMockAugur({
         api: {
           Market: {
-            getNumberOfOutcomes: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "2");
+            getNumberOfOutcomes: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("2");
             },
-            getFeeWindow: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "0x1000000000000000000000000000000000000001");
+            getFeeWindow: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("0x1000000000000000000000000000000000000001");
             },
-            getEndTime: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "4886718345");
+            getEndTime: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("4886718345");
             },
-            getDesignatedReporter: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "0x000000000000000000000000000000000000b0b2");
+            getDesignatedReporter: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("0x000000000000000000000000000000000000b0b2");
             },
-            getNumTicks: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "10000");
+            getNumTicks: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("10000");
             },
-            getMarketCreatorSettlementFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "100");
+            getMarketCreatorSettlementFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("100");
             },
-            getMarketCreatorMailbox: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x1111111111111111111111111111111111111111");
-              callback(null, "0xbbb1111111111111111111111111111111111111");
+            getMarketCreatorMailbox: (p) => {
+              expect(p.tx.to).toBe("0x1111111111111111111111111111111111111111");
+              return Promise.resolve("0xbbb1111111111111111111111111111111111111");
             },
-            getShareToken: (p, callback) => {
-              callback(null, `SHARE_TOKEN_${p._outcome}`);
+            getShareToken: (p) => {
+              return Promise.resolve(`SHARE_TOKEN_${p._outcome}`);
+            },
+            getValidityBondAttoeth: (p) => {
+              return Promise.resolve("800");
             },
           },
           Universe: {
-            getOrCacheReportingFeeDivisor: (p, callback) => {
-              assert.strictEqual(p.tx.to, "0x000000000000000000000000000000000000000b");
-              callback(null, "1000");
+            getOrCacheReportingFeeDivisor: (p) => {
+              expect(p.tx.to).toBe("0x000000000000000000000000000000000000000b");
+              return Promise.resolve("1000");
             },
           },
         },
         constants,
-      },
+      }),
     },
     assertions: {
-      onAdded: (err, records, isReAdded) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onAdded: (records, isReAdded) => {
+
+        expect(records).toEqual({
           markets: [{
             marketId: "0x1111111111111111111111111111111111111111",
             universe: "0x000000000000000000000000000000000000000b",
@@ -818,10 +988,12 @@ describe("blockchain/log-processors/market-created", () => {
             minPrice: new BigNumber("0", 10),
             maxPrice: new BigNumber("1", 10),
             marketCreator: "0x0000000000000000000000000000000000000b0b",
+            transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A004",
+            logIndex: 0,
             creationBlockNumber: 7,
             creationFee: new BigNumber("0", 10),
-            creationTime: 10000000,
-            openInterest: "0",
+            creationTime: 7,
+            openInterest: new BigNumber("0", 10),
             reportingFeeRate: new BigNumber("0.001", 10),
             disputeRounds: null,
             marketCreatorFeeRate: new BigNumber("0.01", 10),
@@ -829,6 +1001,7 @@ describe("blockchain/log-processors/market-created", () => {
             marketCreatorMailbox: "0xbbb1111111111111111111111111111111111111",
             marketCreatorMailboxOwner: "0x0000000000000000000000000000000000000b0b",
             initialReportSize: null,
+            validityBondSize: new BigNumber("800", 10),
             category: "TEST_CATEGORY",
             tag1: "TEST_TAG_1",
             tag2: "TEST_TAG_2",
@@ -840,7 +1013,7 @@ describe("blockchain/log-processors/market-created", () => {
             endTime: 4886718345,
             finalizationBlockNumber: null,
             lastTradeBlockNumber: null,
-            marketStateId: isReAdded ? 19 : 18,
+            marketStateId: isReAdded ? 2 : 1,
             shortDescription: "this is a test market",
             longDescription: "this is the long description of a test market",
             scalarDenomination: null,
@@ -856,7 +1029,8 @@ describe("blockchain/log-processors/market-created", () => {
           }],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [{
@@ -894,20 +1068,49 @@ describe("blockchain/log-processors/market-created", () => {
             marketId: "0x1111111111111111111111111111111111111111",
             outcome: 1,
           }],
+          transfers: [
+            {
+              blockNumber: 2,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111111",
+              sender: null,
+              token: "REP_TOKEN",
+              value: new BigNumber("16777216000000000000000000", 10),
+              transactionHash: "minting1",
+            },
+            {
+              blockNumber: 7,
+              logIndex: 0,
+              recipient: "0x1111111111111111111111111111111111111111",
+              sender: "0x0000000000000000000000000000000000000b0b",
+              token: "ether",
+              transactionHash: "0x000000000000000000000000000000000000000000000000000000000000A004",
+              value: new BigNumber("800", 10),
+            },
+          ],
         });
       },
-      onRemoved: (err, records) => {
-        assert.ifError(err);
-        assert.deepEqual(records, {
+      onRemoved: (records) => {
+        expect(records).toEqual({
           markets: [],
           categories: [{
             category: "TEST_CATEGORY",
-            popularity: 0,
+            nonFinalizedOpenInterest: new BigNumber("0", 10),
+            openInterest: new BigNumber("0", 10),
             universe: "0x000000000000000000000000000000000000000b",
           }],
           outcomes: [],
           search: [],
           tokens: [],
+          transfers: [{
+            blockNumber: 2,
+            logIndex: 0,
+            recipient: "0x1111111111111111111111111111111111111111",
+            sender: null,
+            token: "REP_TOKEN",
+            value: new BigNumber("16777216000000000000000000", 10),
+            transactionHash: "minting1",
+          }],
         });
       },
     },

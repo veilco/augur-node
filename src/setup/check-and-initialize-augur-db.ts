@@ -9,16 +9,11 @@ import { postProcessDatabaseResults } from "../server/post-process-database-resu
 import { monitorEthereumNodeHealth } from "../blockchain/monitor-ethereum-node-health";
 import { logger } from "../utils/logger";
 import { ConnectOptions, ErrorCallback } from "../types";
-
+import { DB_VERSION, DB_FILE } from "../constants";
 interface NetworkIdRow {
   networkId: string;
   overrideTimestamp: number|null;
 }
-
-// WARNING: Update this only if this release requires destroying all existing Augur Node Databases
-const DB_VERSION = 2;
-
-const DB_FILE = "augur-%s-%s.db";
 
 function getDatabasePathFromNetworkId(networkId: string, filenameTemplate: string = DB_FILE, databaseDir: string|undefined) {
   return path.join(databaseDir || path.join(__dirname, "../../"), format(filenameTemplate, networkId, DB_VERSION));
@@ -58,7 +53,7 @@ async function renameDatabaseFile(networkId: string, dbPath: string) {
 }
 
 async function getFreshDatabase(db: Knex|null, networkId: string, dbPath: string): Promise<Knex> {
-  if (db != null) db.destroy();
+  if (db != null) await db.destroy();
   await renameDatabaseFile(networkId, dbPath);
   return createKnex(networkId, dbPath);
 }
@@ -75,15 +70,16 @@ async function isDatabaseDamaged(db: Knex): Promise<boolean> {
 
 async function initializeNetworkInfo(db: Knex, augur: Augur): Promise<void> {
   const networkId: string = augur.rpc.getNetworkID();
+  if (networkId == null) throw new Error("Got null from augur.rpc.getNetworkID()");
   const networkRow: NetworkIdRow = await db.first(["networkId", "overrideTimestamp"]).from("network_id");
-  if (networkRow == null) {
+  if (networkRow == null || networkRow.networkId == null) {
     await db.insert({ networkId }).into("network_id");
   } else {
     const lastNetworkId: string = networkRow.networkId;
     if (networkId === lastNetworkId) {
       await db("network_id").update({ lastLaunched: db.fn.now() });
       if (networkRow.overrideTimestamp == null) return;
-      await promisify(setOverrideTimestamp)(db, networkRow.overrideTimestamp);
+      return setOverrideTimestamp(db, networkRow.overrideTimestamp);
     } else {
       throw new Error(`NetworkId mismatch: current: ${networkId}, expected ${lastNetworkId}`);
     }
@@ -98,14 +94,15 @@ async function checkAndUpdateContractUploadBlock(augur: Augur, networkId: string
     const oldUploadBlockNumber = Number(await promisify(readFile)(oldUploadBlockNumberFile));
     if (currentUploadBlockNumber !== oldUploadBlockNumber) {
       console.log(`Deleting existing DB for this configuration as the upload block number is not equal: OLD: ${oldUploadBlockNumber} NEW: ${currentUploadBlockNumber}`);
-      renameDatabaseFile(networkId, dbPath);
+      await renameDatabaseFile(networkId, dbPath);
     }
   }
   await promisify(writeFile)(oldUploadBlockNumberFile, currentUploadBlockNumber);
 }
 
 export async function renameBulkSyncDatabaseFile(networkId: string, databaseDir?: string) {
-  return renameDatabaseFile(networkId, getDatabasePathFromNetworkId(networkId, DB_FILE, databaseDir));
+  const dbPath = getDatabasePathFromNetworkId(networkId, DB_FILE, databaseDir);
+  if (existsSync(dbPath)) return renameDatabaseFile(networkId, dbPath);
 }
 
 export async function createDbAndConnect(errorCallback: ErrorCallback|undefined, augur: Augur, network: ConnectOptions, databaseDir?: string): Promise<Knex> {

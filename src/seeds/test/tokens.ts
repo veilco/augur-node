@@ -5,11 +5,6 @@ exports.seed = async (knex: Knex): Promise<any> => {
   return knex("tokens").del().then(async (): Promise<any> => {
     // Inserts seed entries
     const seedData = [{
-      contractAddress: "ETH",
-      symbol: "ETH",
-      marketId: null,
-      outcome: null,
-    }, {
       contractAddress: "0x7a305d9b681fb164dc5ad628b5992177dc66aec8",
       symbol: "REP",
       marketId: null,
@@ -49,6 +44,16 @@ exports.seed = async (knex: Knex): Promise<any> => {
       symbol: "shares",
       marketId: "0x0000000000000000000000000000000000000002",
       outcome: 0,
+    }, {
+      contractAddress: "SHARE_TOKEN_ADDRESS",
+      symbol: "shares",
+      marketId: "0x0000000000000000000000000000000000000003",
+      outcome: 0,
+    }, {
+      contractAddress: "TOKEN_ADDRESS",
+      symbol: "shares",
+      marketId: "0x1000000000000000000000000000000000000001",
+      outcome: 2,
     }];
     return knex.batchInsert("tokens", seedData, seedData.length);
   });
