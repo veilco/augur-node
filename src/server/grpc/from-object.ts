@@ -33,7 +33,7 @@ export function marketInfoToProto(x: UIMarketInfo<string>): MarketInfo {
     }
   });
   mi.setVolume(x.volume);
-  mi.setOutstandingShares(x.outstandingShares);
+  mi.setOutstandingShares(x.openInterest);
   mi.setFeeWindow(x.feeWindow);
   mi.setEndTime(x.endTime);
   if (x.finalizationBlockNumber !== null && x.finalizationBlockNumber !== undefined) {
