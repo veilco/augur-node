@@ -15,6 +15,7 @@ COPY test test
 COPY proto proto
 COPY src src
 
+RUN npm run build-protobuf
 RUN npm run build:ts
 RUN npm pack
 
